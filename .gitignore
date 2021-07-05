@@ -8,3 +8,13 @@ capstone-*
 *.nds
 .idea/
 cmake-build-*
+
+# dis_single_func stuff
+dis_single_func.cfg
+*.dump
+*.s
+missing_funcs.txt
+baserom_syms.yml
+*.pyc
+__pycache__/
+*.cfg
