@@ -132,7 +132,14 @@ class XMap:
                         #if symbol.full_addr < self.symbol_addr_cutoff:
                         self.symbols_by_addr[full_addr] = symbol
                     else:
-                        print(f"Assumption failed! Duplicate full addr found! value: {full_addr}, original: {self.symbols_by_addr[full_addr].name}, duplicate: {symbol.name}")
+                        pass
+                        #print(f"Assumption failed! Duplicate full addr found! value: {full_addr}, original: {self.symbols_by_addr[full_addr].name}, duplicate: {symbol.name}")
+
+                    if symbol.name not in self.symbols_by_name:
+                        self.symbols_by_name[symbol.name] = [symbol]
+                    else:
+                        self.symbols_by_name[symbol.name].append(symbol)
+                        #print(f"Warning! Duplicate 
 
             #filenames = {}
             #for symbol in self.symbols_by_addr.values():
