@@ -18,3 +18,7 @@ baserom_syms.yml
 *.pyc
 __pycache__/
 *.cfg
+*.xmap
+fix_jumptable_input.txt
+fix_jumptable_out.txt
+compare.sh

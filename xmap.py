@@ -21,6 +21,8 @@
 import re
 
 overlay_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.ID \(linker command file\)$")
+overlay_start_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.START \(linker command file\)$")
+overlay_end_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.BSS_END \(linker command file\)$")
 filename_regex = re.compile(r"^\s*\(([^\)]+)\)")
 
 class OvAddr:
@@ -52,7 +54,24 @@ class OvAddr:
                 return False
             else:
                 return self.addr < other.addr
-      
+        return NotImplemented
+
+    def __eq__(self, other):
+        if isinstance(other, OvAddr):
+            return self.overlay == other.overlay and self.addr == other.addr
+        return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, OvAddr):
+            if self.overlay < other.overlay:
+                return True
+            elif self.overlay > other.overlay:
+                return False
+            else:
+                return self.addr <= other.addr
+
+        raise NotImplemented
+
 class Symbol:
     __slots__ = ("name", "full_addr", "section", "size", "filename", "archive")
 
@@ -65,13 +84,15 @@ class Symbol:
         self.archive = archive
 
 class XMap:
-    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name")
+    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs")
 
     def __init__(self, filename, start_section):
         self.filename = filename
         self.start_section = start_section
         self.symbols_by_addr = {}
         self.symbols_by_name = {}
+        self.overlay_start_addrs = {}
+        self.overlay_end_addrs = {}
         self.read_xmap()
 
     def read_xmap(self):
@@ -95,6 +116,10 @@ class XMap:
                     match_obj = overlay_regex.match(line)
                     if match_obj:
                         cur_overlay = int(match_obj.group(1), 16)
+                    elif (match_obj := overlay_start_regex.match(line)):
+                        self.overlay_start_addrs[cur_overlay] = int(match_obj.group(1), 16)
+                    elif (match_obj := overlay_end_regex.match(line)):
+                        self.overlay_end_addrs[cur_overlay] = int(match_obj.group(1), 16)
                     elif line.startswith("# Memory map:"):
                         break
                 else:
@@ -124,7 +149,7 @@ class XMap:
                         if cur_overlay == -1:
                             name = f"cpp_{addr:07X}"
                         else:
-                            name = f"cpp_ov{cur_overlay}_{addr:07X}"
+                            name = f"NitroMain // cpp_ov{cur_overlay}_{addr:07X}"
 
                     full_addr = OvAddr(cur_overlay, addr)
                     symbol = Symbol(name, full_addr, section, size, filename, archive)
@@ -141,16 +166,17 @@ class XMap:
                         self.symbols_by_name[symbol.name].append(symbol)
                         #print(f"Warning! Duplicate 
 
-            #filenames = {}
-            #for symbol in self.symbols_by_addr.values():
-            #    filenames[symbol.filename] = True
-            #
-            #output = ""
-            #for filename in filenames:
-            #    output += f"{filename}\n"
-            #
-            #with open("diamond_out.txt", "w+") as f:
-            #    f.write(output)
+        self.symbols_by_addr = {k: v for k, v in sorted(self.symbols_by_addr.items(), key=lambda item: item[1].full_addr)}
+        #filenames = {}
+        #for symbol in self.symbols_by_addr.values():
+        #    filenames[symbol.filename] = True
+        #
+        #output = ""
+        #for filename in filenames:
+        #    output += f"{filename}\n"
+        #
+        #with open("diamond_out.txt", "w+") as f:
+        #    f.write(output)
 
 def main():
     XMap("main.nef.xMAP", ".main")
