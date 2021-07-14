@@ -22,3 +22,6 @@ __pycache__/
 fix_jumptable_input.txt
 fix_jumptable_out.txt
 compare.sh
+*.7z
+ov66.json
+*.bin

@@ -19,15 +19,16 @@ from xmap import XMap, OvAddr
 import glob
 import pathlib
 import sys
+import argparse
 
 LOOKING_FOR_OVERLAY_START = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 66
-CUR_OVERLAY_START = 0x2fe200
-CUR_OVERLAY_END = 0x32bc00
-CUR_OVERLAY_RAM = 0x222dce0
+CUR_OVERLAY = 94
+CUR_OVERLAY_START = 0x37b400
+CUR_OVERLAY_END = 0x386e00
+CUR_OVERLAY_RAM = 0x223b140
 
 def is_addr_in_ov_range(addr):
     return CUR_OVERLAY_START <= addr <= CUR_OVERLAY_END
@@ -51,6 +52,11 @@ def find_file(symbol):
     #return glob.glob(f"**/{pathlib.Path(symbol.filename).stem}.c", recursive=True)
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-f", "--show-filename", dest="show_filename", action="store_true", default=False)
+    ap.add_argument("best_shift_index", nargs="?", type=int, default=0)
+    args = ap.parse_args()
+
     os.chdir("../master_cpuj00")
     subprocess.run(["./compare.sh"])
 
@@ -64,6 +70,9 @@ def main():
             next(f)
 
         for line in f:
+            if line[1] == "*":
+                continue
+
             #print(line)
             if state == LOOKING_FOR_OVERLAY_START:
                 try:
@@ -103,7 +112,7 @@ def main():
     #print(shifts)
     shifts = filter(lambda x: x.count >= 10, shifts)
     #print(list(shifts))
-    best_shift = sorted(shifts, key=lambda x: x.addr)[0]
+    best_shift = sorted(shifts, key=lambda x: x.addr)[args.best_shift_index]
     best_shift_full_addr = OvAddr(CUR_OVERLAY, best_shift.addr)
 
     prev_symbol = None
@@ -116,7 +125,7 @@ def main():
             break
         prev_symbol = symbol
 
-    if len(sys.argv) == 2 and sys.argv[1] == "-f":
+    if args.show_filename:
         chosen_symbol_file_output = f" in {find_file(chosen_symbol)}"
         next_symbol_file_output = f" in {find_file(next_symbol)}"
     else:

@@ -90,7 +90,10 @@ def dis_function(input_full_addr, rom_file, func_name, is_arm, fix_pools):
             func_label_line_index = i
             break
     else:
-        raise RuntimeError(f"Could not find function {func_name} in ndsdisasm output!")
+        with open("dis_single_func_error_output.s", "w+") as f:
+            f.write(output.decode("utf-8"))
+
+        raise RuntimeError(f"Could not find function {func_name} in ndsdisasm output! rom_file: {rom_file}")
 
     output = ""
 
@@ -115,6 +118,7 @@ def dis_function(input_full_addr, rom_file, func_name, is_arm, fix_pools):
         output = output.replace("popeq", "ldmeqia sp!,").replace("popne", "ldmneia sp!,").replace("pop", "ldmia sp!,").replace("push", "stmfd sp!,")
 
     if fix_pools:
+        #print("fix pools")
         output, pool_values = find_collect_replace_pools(output)
         output = remove_ldr_labels_regex.sub(r"// \1", output)
 
