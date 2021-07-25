@@ -22,6 +22,7 @@ import re
 
 overlay_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.ID \(linker command file\)$")
 overlay_start_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.START \(linker command file\)$")
+overlay_text_end_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.TEXT_END \(linker command file\)$")
 overlay_end_regex = re.compile(r"^#>([0-9a-fA-F]{8})\s+SDK_OVERLAY\.[^\.]+\.BSS_END \(linker command file\)$")
 filename_regex = re.compile(r"^\s*\(([^\)]+)\)")
 
@@ -84,7 +85,7 @@ class Symbol:
         self.archive = archive
 
 class XMap:
-    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs")
+    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs", "overlay_text_end_addrs")
 
     def __init__(self, filename, start_section):
         self.filename = filename
@@ -93,6 +94,7 @@ class XMap:
         self.symbols_by_name = {}
         self.overlay_start_addrs = {}
         self.overlay_end_addrs = {}
+        self.overlay_text_end_addrs = {}
         self.read_xmap()
 
     def read_xmap(self):
@@ -120,6 +122,8 @@ class XMap:
                         self.overlay_start_addrs[cur_overlay] = int(match_obj.group(1), 16)
                     elif (match_obj := overlay_end_regex.match(line)):
                         self.overlay_end_addrs[cur_overlay] = int(match_obj.group(1), 16)
+                    elif (match_obj := overlay_text_end_regex.match(line)):
+                        self.overlay_text_end_addrs[cur_overlay] = int(match_obj.group(1), 16)                        
                     elif line.startswith("# Memory map:"):
                         break
                 else:

@@ -249,7 +249,10 @@ def get_ov_addr_from_components(overlay, addr, xmap_file):
 
     return ov_addr
 
-def fix_calls(output, xmap_file, baserom_syms, cutoff_addr=None, cur_overlay=-1):
+def fix_calls(output, xmap_file, baserom_syms, cutoff_addr=None, cur_overlay=-1, allow_forward_references=False):
+    if allow_forward_references:
+        cutoff_addr = None
+
     lines = output.splitlines(keepends=True)
     func_addrs = set()
     for line in lines:
@@ -296,7 +299,10 @@ def find_collect_replace_pools(input):
     output = find_pools_regex.sub(collect_pool_values, input)
     return output, pool_values
 
-def sub_pool_symbols(output, xmap_file, pool_values, cutoff_addr=None, cur_overlay=-1):
+def sub_pool_symbols(output, xmap_file, pool_values, cutoff_addr=None, cur_overlay=-1, allow_forward_references=False):
+    if allow_forward_references:
+        cutoff_addr = None
+
     rep_dict = {}
 
     if cur_overlay == -1:
@@ -331,7 +337,7 @@ def sub_pool_symbols(output, xmap_file, pool_values, cutoff_addr=None, cur_overl
 def open_in_notepadpp(filename):
     subprocess.run(["/mnt/c/program files/notepad++/notepad++.exe", filename])
 
-def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_file, baserom_output_file, is_arm, skip_mainrom, skip_baserom, fix_pools, xmap_file, open_after):
+def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_file, baserom_output_file, is_arm, skip_mainrom, skip_baserom, fix_pools, xmap_file, open_after, allow_forward_references):
     if xmap_file is None:
         xmap_file = create_xmap()
     baserom_syms = BaseromSyms()
@@ -340,8 +346,8 @@ def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_
 
     if not skip_baserom:
         br_output, br_pool_values = dis_function(input_full_addr, baserom_file, func_name, is_arm, fix_pools)
-        br_output, unk_funcs = fix_calls(br_output, xmap_file, baserom_syms, cutoff_addr=input_full_addr.addr, cur_overlay=input_full_addr.overlay)
-        br_output = sub_pool_symbols(br_output, xmap_file, br_pool_values, cutoff_addr=input_full_addr.addr, cur_overlay=input_full_addr.overlay)
+        br_output, unk_funcs = fix_calls(br_output, xmap_file, baserom_syms, cutoff_addr=input_full_addr.addr, cur_overlay=input_full_addr.overlay, allow_forward_references=allow_forward_references)
+        br_output = sub_pool_symbols(br_output, xmap_file, br_pool_values, cutoff_addr=input_full_addr.addr, cur_overlay=input_full_addr.overlay, allow_forward_references=allow_forward_references)
         if fix_pools:
             br_output = fix_baserom_symbols(br_output, baserom_syms)
 
@@ -353,8 +359,8 @@ def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_
 
     if not skip_mainrom:
         mr_output, mr_pool_values = dis_function(input_full_addr, mainrom_file, func_name, is_arm, fix_pools)
-        mr_output, overlay_funcs = fix_calls(mr_output, xmap_file, None, cur_overlay=input_full_addr.overlay)
-        mr_output = sub_pool_symbols(mr_output, xmap_file, mr_pool_values, cutoff_addr=None, cur_overlay=input_full_addr.overlay)
+        mr_output, overlay_funcs = fix_calls(mr_output, xmap_file, None, cur_overlay=input_full_addr.overlay, allow_forward_references=allow_forward_references)
+        mr_output = sub_pool_symbols(mr_output, xmap_file, mr_pool_values, cutoff_addr=None, cur_overlay=input_full_addr.overlay, allow_forward_references=allow_forward_references)
         overlay_funcs_str = '\n'.join(overlay_funcs)
         output += f"Overlay functions in mainrom:\n{overlay_funcs_str}\n"
 
@@ -388,17 +394,20 @@ if __name__ == "__main__":
     ap.add_argument("-x", "--fix-pools", dest="fix_pools", action="store_true", default=False)
     ap.add_argument("-v", "--overlay", dest="overlay", type=int, default=-1)
     ap.add_argument("-n", "--open-after", dest="open_after", action="store_true", default=False)
+    ap.add_argument("-w", "--which-function-index", dest="which_function_index", type=int, default=0)
+    ap.add_argument("-r", "--allow-forward-references", dest="allow_forward_references", action="store_true", default=False)
     args = ap.parse_args()
 
     xmap_file = create_xmap()
-
+    #print(f"{xmap_file.symbols_by_addr[OvAddr(-1, 0x20E2178)]}")
+    #quit()
     if args.input_addr is not None:
         input_full_addr = OvAddr(args.overlay, int(args.input_addr, 16))
     else:
         if args.func_name is None:
             raise RuntimeError("Must specify at least one of --input-addr or --func-name!")
 
-        func_symbol = xmap_file.symbols_by_name[args.func_name][0]
+        func_symbol = xmap_file.symbols_by_name[args.func_name][args.which_function_index]
         input_full_addr = func_symbol.full_addr
         print(f"Using symbol with ov+address {input_full_addr.overlay}+{input_full_addr.addr:07x} in filename {func_symbol.filename}!")
 
@@ -415,4 +424,4 @@ if __name__ == "__main__":
     mainrom_output_file = f"{func_name}-main.s"
     baserom_output_file = f"{func_name}.s"
 
-    main(input_full_addr, args.baserom_file, args.mainrom_file, func_name, mainrom_output_file, baserom_output_file, args.arm, args.skip_mainrom, args.skip_baserom, args.fix_pools, xmap_file, args.open_after)
+    main(input_full_addr, args.baserom_file, args.mainrom_file, func_name, mainrom_output_file, baserom_output_file, args.arm, args.skip_mainrom, args.skip_baserom, args.fix_pools, xmap_file, args.open_after, args.allow_forward_references)

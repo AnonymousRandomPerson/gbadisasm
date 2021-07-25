@@ -25,10 +25,10 @@ LOOKING_FOR_OVERLAY_START = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 94
-CUR_OVERLAY_START = 0x37b400
-CUR_OVERLAY_END = 0x386e00
-CUR_OVERLAY_RAM = 0x223b140
+CUR_OVERLAY = 117
+CUR_OVERLAY_START = 0x3ffe00
+CUR_OVERLAY_END = 0x406a00
+CUR_OVERLAY_RAM = 0x2260440
 
 def is_addr_in_ov_range(addr):
     return CUR_OVERLAY_START <= addr <= CUR_OVERLAY_END
@@ -133,8 +133,8 @@ def main():
         next_symbol_file_output = ""
 
     output = ""
-    output += f"possible shift at {best_shift.addr:07x} with symbol {chosen_symbol.name}{chosen_symbol_file_output} (load addr: {convert_virt_to_load(best_shift.addr):07x})!\n"
-    output += f"(next symbol: {next_symbol.name}{next_symbol_file_output})\n"
+    output += f"possible shift at {best_shift.addr:07x} [{chosen_symbol.full_addr.overlay}:{chosen_symbol.full_addr.addr:07x}] with symbol {chosen_symbol.name}{chosen_symbol_file_output} (load addr: {convert_virt_to_load(best_shift.addr):07x})!\n"
+    output += f"(next symbol: {next_symbol.name}{next_symbol_file_output} at {next_symbol.full_addr.overlay}:{next_symbol.full_addr.addr:07x})\n"
     print(output)
 
 if __name__ == "__main__":
