@@ -121,6 +121,8 @@ def dis_function(input_full_addr, rom_file, func_name, is_arm, fix_pools):
         #print("fix pools")
         output, pool_values = find_collect_replace_pools(output)
         output = remove_ldr_labels_regex.sub(r"// \1", output)
+    else:
+        pool_values = set()
 
     if ".2byte" in output:
         output = fix_jumptables(output)

@@ -52,7 +52,28 @@ load_to_virt_conversion_table = (
     Range(52, 0x2b9400, 0x2ba200),
     Range(54, 0x2bac00, 0x2bb400),
     Range(58, 0x2bce00, 0x2bf400),
-    Range(61, 0x2cc400, 0x2cfe00)
+    Range(61, 0x2cc400, 0x2cfe00),
+    Range(62, 0x2cfe00, 0x2ea600),
+    Range(64, 0x2ed600, 0x2f2000),
+    Range(65, 0x2f2000, 0x2fe200),
+    Range(66, 0x2fe200, 0x32bc00),
+    Range(70, 0x331000, 0x343200),
+    Range(73, 0x347000, 0x349e00),
+    Range(76, 0x34c000, 0x350000),
+    Range(77, 0x350000, 0x356e00),
+    Range(79, 0x358c00, 0x35be00),
+    Range(80, 0x35be00, 0x35e600),
+    Range(83, 0x361400, 0x366600),
+    Range(90, 0x375800, 0x376c00),
+    Range(91, 0x376c00, 0x378c00),
+    Range(94, 0x37b400, 0x386e00),
+    Range(97, 0x38f400, 0x3a3800),
+    Range(98, 0x3a3800, 0x3a6a00),
+    Range(104, 0x3b9800, 0x3cd600),
+    Range(106, 0x3d2000, 0x3d3e00),
+    Range(107, 0x3d3e00, 0x3dc800),
+    Range(111, 0x3e4e00, 0x3e7a00),
+    Range(117, 0x3ffe00, 0x406a00)
 )
 
 def is_addr_in_ov_range(addr):
@@ -109,8 +130,9 @@ def main():
 
             #print(line)
             if state == SKIPPING_UNTIL_0x4800:
-                if line.startswith(" 000001b0"):
-                    state = LOOKING_FOR_MINUS
+                #if line.startswith(" 000001b0"):
+                #    state = LOOKING_FOR_MINUS
+                state = LOOKING_FOR_MINUS
 
             if state == LOOKING_FOR_MINUS:
                 if line[0] == "-":

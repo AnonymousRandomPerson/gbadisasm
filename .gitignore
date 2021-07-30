@@ -25,3 +25,4 @@ compare.sh
 *.7z
 ov66.json
 *.bin
+*.inc

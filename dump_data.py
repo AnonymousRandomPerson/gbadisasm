@@ -85,6 +85,9 @@ class BinFile:
     def read_byte(self):
         return ord(self._rom_file.read(1))
 
+    def read_bytes(self, n):
+        return struct.unpack("<c", self._rom_file.read(n))
+
     def read_ascii_char(self):
         return self._rom_file.read(1).decode("ascii")
 
@@ -93,6 +96,9 @@ class BinFile:
 
     def read_word(self):
         return struct.unpack("<I", self._rom_file.read(4))[0]
+
+    def read_words(self, n):
+        return (x[0] for x in struct.iter_unpack("<I", self._rom_file.read(4 * n)))
 
     def output_bytes(self, count):
         for i in range(count):
@@ -339,8 +345,66 @@ def dump_pms_word(rom):
         rom.output_hwords_list(dup_word.count, tab=1, pad=False, space_after_comma=False, trailing_comma=True, hex_format=False)
         rom.output += f"}};\n\n"
 
+def dump_hit_rect_aiueo(rom):
+    rom.seek(0x2e9d30)
+    for i in range(9):
+        rom.output += "\t{"
+        row = []
+        for j in range(4):
+            val = rom.read_byte()
+            if val % 8 != 0:
+                raise RuntimeError()
+            row.append(f"{val // 8} * 8")
+
+        rom.output += ",".join(f"{entry: >7}" for entry in row)
+        rom.output += "},\n"
+
+def dump_info_bmpwin_table(rom):
+    rom.seek(0x385f84)
+    for i in range(12):
+        rom.output += "\t{ "
+        row = rom.read_words(4)
+        rom.output += ", ".join(f"{entry: >2}" for entry in row) + ", },\n"
+           
+def dump_country_list_tbl(rom):
+    rom.seek(0x386434)
+    for i in range(0x82):
+        rom.output += f"\tcountry{rom.read_hword():03d},\n"
+
+def dump_info_bmpwin_table2(rom):
+    rom.seek(0x385e54)
+    for i in range(12):
+        rom.output += "\t{ "
+        row = rom.read_words(4)
+        rom.output += ", ".join(f"{entry: >2}" for entry in row) + ", },\n"
+
+comm_free_call_strs = {
+    0: "FALSE",
+    1: "TRUE",
+    0xffffffff: "0xffffffff"
+}
+
+def dump_email_proc_data_tbl(rom):
+    rom.seek(0x3a672c)
+    xmap = XMap("../master_cpuj00/bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
+
+    for i in range(6):
+        param_func = rom.read_word()
+        param_func_name = xmap.symbols_by_addr[OvAddr(98, param_func - 1)].name
+
+        return_func = rom.read_word()
+        return_func_name = xmap.symbols_by_addr[OvAddr(98, return_func - 1)].name
+
+        proc_data = rom.read_word()
+        proc_data_formatted = f"(const PROC_DATA *){proc_data:07x}"
+
+        comm_free_call = rom.read_word()
+        comm_free_call_formatted = comm_free_call_strs[comm_free_call]
+
+        rom.output += f"\t{{{param_func_name}, {return_func_name}, {proc_data_formatted}, {comm_free_call_formatted}}},\n"
+        
 def main():
-    MODE = 8
+    MODE = 13
     if MODE == 0:
         BinFile.run_dump_func(dump_scrcmd_ptrs, "scrcmd_ptrs.dump", do_mainrom=True)
     elif MODE == 1:
@@ -359,6 +423,16 @@ def main():
         BinFile.run_dump_func(dump_libsyscall, "libsyscall.s")
     elif MODE == 8:
         BinFile.run_dump_func(dump_pms_word, "pms_word.dump")
+    elif MODE == 9:
+        BinFile.run_dump_func(dump_hit_rect_aiueo, "hit_rect_aieuo.dump")
+    elif MODE == 10:
+        BinFile.run_dump_func(dump_info_bmpwin_table, "info_bmpwin_table.dump")
+    elif MODE == 11:
+        BinFile.run_dump_func(dump_country_list_tbl, "country_list_tbl.dump")
+    elif MODE == 12:
+        BinFile.run_dump_func(dump_info_bmpwin_table2, "info_bmpwin_table2.dump")
+    elif MODE == 13:
+        BinFile.run_dump_func(dump_email_proc_data_tbl, "email_proc_data_tbl.dump")
     else:
         print(f"Unknown MODE {MODE}!")
 
