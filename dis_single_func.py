@@ -26,9 +26,10 @@ import argparse
 import subprocess
 import re
 import xmap
-from xmap import OvAddr
+from xmap import XMap, OvAddr
 import yaml
 from itertools import zip_longest
+import functools
 
 flag_set_insn_regex = re.compile(r"^(\t(?:adc|add|and|asr|bic|cmn|eor|lsl|lsr|mov|mul|mvn|neg|orr|ror|rsb|sbc|sub))s\b", flags=re.MULTILINE)
 blx_regex = re.compile(r"^\tblx (?!r([0-9])\b)", flags=re.MULTILINE)
@@ -203,9 +204,6 @@ def fix_jumptable(lines):
 
     return output_lines
 
-def create_xmap():
-    return xmap.XMap("../master_cpuj00/bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
-
 class BaseromSyms:
     __slots__ = ("data", "static_functions", "overlay_functions")
 
@@ -341,7 +339,7 @@ def open_in_notepadpp(filename):
 
 def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_file, baserom_output_file, is_arm, skip_mainrom, skip_baserom, fix_pools, xmap_file, open_after, allow_forward_references):
     if xmap_file is None:
-        xmap_file = create_xmap()
+        raise RuntimeError("Todo implement support for uninitialized xmap!")
     baserom_syms = BaseromSyms()
 
     output = ""
@@ -382,6 +380,7 @@ def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_
 if __name__ == "__main__":
     BASEROM_FILE_DEFAULT = "pokeplatinum_us.nds"
     MAINROM_FILE_DEFAULT = "../master_cpuj00/bin/ARM9-TS/Rom/main.srl"
+    XMAP_FILE_DEFAULT = "../master_cpuj00/bin/ARM9-TS/Rom/main.nef.xMAP"
 
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--input-addr", dest="input_addr", default=None)
@@ -394,13 +393,15 @@ if __name__ == "__main__":
     ap.add_argument("-s", "--skip-mainrom", dest="skip_mainrom", action="store_true", default=False)
     ap.add_argument("-t", "--skip-baserom", dest="skip_baserom", action="store_true", default=False)
     ap.add_argument("-x", "--fix-pools", dest="fix_pools", action="store_true", default=False)
-    ap.add_argument("-v", "--overlay", dest="overlay", type=int, default=-1)
+    ap.add_argument("-v", "--overlay", dest="overlay", type=functools.partial(int, base=0), default=-1)
     ap.add_argument("-n", "--open-after", dest="open_after", action="store_true", default=False)
     ap.add_argument("-w", "--which-function-index", dest="which_function_index", type=int, default=0)
     ap.add_argument("-r", "--allow-forward-references", dest="allow_forward_references", action="store_true", default=False)
+    ap.add_argument("-y", "--xmap-filename", dest="xmap_filename", default=XMAP_FILE_DEFAULT)
+
     args = ap.parse_args()
 
-    xmap_file = create_xmap()
+    xmap_file = XMap(args.xmap_filename, ".main")
     #print(f"{xmap_file.symbols_by_addr[OvAddr(-1, 0x20E2178)]}")
     #quit()
     if args.input_addr is not None:
@@ -416,7 +417,10 @@ if __name__ == "__main__":
     if args.func_name is not None:
         func_name = args.func_name
     else:
-        func_name = f"sub_{input_full_addr.addr:07X}"
+        if args.overlay == -1:
+            func_name = f"sub_{input_full_addr.addr:07X}"
+        else:
+            func_name = f"ov{args.overlay}_{input_full_addr.addr:07X}"
 
     #if args.output_file is not None:
     #    output_file = args.output_file
