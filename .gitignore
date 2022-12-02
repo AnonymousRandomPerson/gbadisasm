@@ -26,3 +26,5 @@ compare.sh
 ov66.json
 *.bin
 *.inc
+*include/**/*.h
+*include/*.h

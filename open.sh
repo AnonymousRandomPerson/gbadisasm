@@ -1,1 +1,1 @@
-/mnt/c/"program files"/notepad++/notepad++.exe "../master_cpuj00/$1"
+explorer.exe `wslpath -w "../00jupc_retsam/$1"`

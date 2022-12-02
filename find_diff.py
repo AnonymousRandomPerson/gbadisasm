@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2021 luckytyphlosion
+# Copyright (c) 2022 luckytyphlosion
 # 
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted.
@@ -39,6 +39,7 @@ class Range:
 
 load_to_virt_conversion_table = (
     Range(-1, 0x4000, 0x105d14),
+    Range(4, 0x107e00, 0x151600),
     Range(5, 0x151600, 0x182a00),
     Range(7, 0x18e200, 0x194000),
     Range(13, 0x1c2c00, 0x1cce00),

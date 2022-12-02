@@ -1,4 +1,4 @@
-# Copyright (c) 2021 luckytyphlosion
+# Copyright (c) 2022 luckytyphlosion
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +45,7 @@ class OvAddr:
         return NotImplemented
 
     def __repr__(self):
-        return f"overlay: {self.overlay:02x}, addr: {self.addr:07x}"
+        return f"{self.overlay:02x}:{self.addr:07x}"
 
     def __lt__(self, other):
         if isinstance(other, OvAddr):
@@ -84,8 +84,11 @@ class Symbol:
         self.filename = filename
         self.archive = archive
 
+    def __repr__(self):
+        return f"Symbol(name={self.name}, full_addr={self.full_addr}, section={self.section}, size={self.size}, filename={self.filename}, archive={self.archive}"
+
 class XMap:
-    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs", "overlay_text_end_addrs")
+    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs", "overlay_text_end_addrs", "symbols_by_filename")
 
     def __init__(self, filename, start_section):
         self.filename = filename
@@ -95,6 +98,7 @@ class XMap:
         self.overlay_start_addrs = {}
         self.overlay_end_addrs = {}
         self.overlay_text_end_addrs = {}
+        self.symbols_by_filename = {}
         self.read_xmap()
 
     def read_xmap(self):
@@ -168,6 +172,13 @@ class XMap:
                         self.symbols_by_name[symbol.name] = [symbol]
                     else:
                         self.symbols_by_name[symbol.name].append(symbol)
+
+                    if symbol.archive is None and symbol.filename != "cpp_todo":
+                        if symbol.filename not in self.symbols_by_filename:                        
+                            self.symbols_by_filename[symbol.filename] = [symbol]
+                        else:
+                            self.symbols_by_filename[symbol.filename].append(symbol)
+
                         #print(f"Warning! Duplicate 
 
         self.symbols_by_addr = {k: v for k, v in sorted(self.symbols_by_addr.items(), key=lambda item: item[1].full_addr)}

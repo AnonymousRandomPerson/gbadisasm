@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2021 luckytyphlosion
+# Copyright (c) 2022 luckytyphlosion
 # 
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted.
@@ -25,10 +25,10 @@ LOOKING_FOR_OVERLAY_START = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 66
-CUR_OVERLAY_START = 0x2fe200
-CUR_OVERLAY_END = 0x32bc00
-CUR_OVERLAY_RAM = 0x222dce0
+CUR_OVERLAY = 4
+CUR_OVERLAY_START = 0x107e00
+CUR_OVERLAY_END = 0x151600
+CUR_OVERLAY_RAM = 0x21d0d80
 
 def is_addr_in_ov_range(addr):
     return CUR_OVERLAY_START <= addr <= CUR_OVERLAY_END
@@ -57,7 +57,7 @@ def main():
     ap.add_argument("best_shift_index", nargs="?", type=int, default=0)
     args = ap.parse_args()
 
-    os.chdir("../master_cpuj00")
+    os.chdir("../00jupc_retsam")
     subprocess.run(["./compare.sh"])
 
     longest_shift = 0

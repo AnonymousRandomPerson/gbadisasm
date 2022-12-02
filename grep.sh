@@ -1,3 +1,3 @@
 #!/bin/bash
-cd ../MASTER_CPUJ00
+cd ../00jupc_retsam
 git --no-pager grep -w "$1"

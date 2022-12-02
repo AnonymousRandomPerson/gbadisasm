@@ -1,7 +1,7 @@
 # =============================================================================
 # MIT License
 # 
-# Copyright (c) 2021 luckytyphlosion
+# Copyright (c) 2022 luckytyphlosion
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -378,9 +378,9 @@ def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_
             open_in_notepadpp(mainrom_output_file)
 
 if __name__ == "__main__":
-    BASEROM_FILE_DEFAULT = "pokeplatinum_us.nds"
-    MAINROM_FILE_DEFAULT = "../master_cpuj00/bin/ARM9-TS/Rom/main.srl"
-    XMAP_FILE_DEFAULT = "../master_cpuj00/bin/ARM9-TS/Rom/main.nef.xMAP"
+    BASEROM_FILE_DEFAULT = "../00jupc_retsam/diff/pokeplatinum_us.nds"
+    MAINROM_FILE_DEFAULT = "../00jupc_retsam/bin/ARM9-TS/Rom/main.srl"
+    XMAP_FILE_DEFAULT = "../00jupc_retsam/bin/ARM9-TS/Rom/main.nef.xMAP"
 
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--input-addr", dest="input_addr", default=None)
