@@ -29,7 +29,12 @@ import pathlib
 import glob
 import itertools
 import functools
-from xmap import XMap
+from xmap import XMap, OvAddr
+import json
+import time
+
+OUTPUT_PREFIX = "../00jupc_retsam2"
+DEBUG = False
 
 class LineReader:
     __slots__ = ("_line_num", "_lines", "_filename")
@@ -67,6 +72,9 @@ class LineReader:
     def location(self):
         return f"{self._filename}:{self._line_num+1}"
 
+    def clear_cur_line(self):
+        self._lines[self._line_num] = ""
+
 # typedef struct
 # typedef union
 # typedef enum
@@ -79,7 +87,7 @@ TYPEDEF_STRUCT_DECL = 0
 TYPEDEF_STRUCT_DEF = 1
 
 class ExternConstDecl:
-    __slots__ = ("name", "contents", "dependencies")
+    __slots__ = ("name", "contents", "dependencies", "filename", "include_filename", "full_filename", "header_guard")
 
     def __init__(self, name, contents, dependencies):
         self.name = name
@@ -136,17 +144,6 @@ class NitroSDKType:
         self.name = name
         self.include_filename = include_filename
 
-class HeaderInfo:
-    __slots__ = ("filename", "basename", "objs", "includes", "resolved")
-
-    def __init__(self, filename):
-        self.filename = filename
-        self.basename = pathlib.Path(filename).name
-        #print(f"self.basename: {self.basename}")
-        self.objs = []
-        self.includes = []
-        self.resolved = False
-
 ov_addr_regex = re.compile(r"^ov([0-9]+)_[0-9A-F]{8}")
 
 class FuncDeclHeader:
@@ -173,26 +170,43 @@ class FuncDeclHeader:
         self.dependencies = []
 
     def add_func_decl(self, func_decl, symbol):
-        self.contents_list.append((symbol.full_addr, func_decl.contents))
+        self.contents_list.append((symbol.full_addr, func_decl))
         self.dependencies.extend(func_decl.dependencies)
+
+    def update_funcname_to_header_filename_mapping(self, funcname_to_header_filename):
+        for symbol_full_addr, func_decl in self.contents_list:
+            funcname_to_header_filename[func_decl.name] = self.include_filename
 
     def gen_header_and_write(self, object_name_to_object):
         if len(self.contents_list) == 0:
             return
 
-        sorted_contents_list = tuple(x[1] for x in sorted(self.contents_list, key=lambda x: x[0]))
+        sorted_contents_list = tuple(x[1].contents for x in sorted(self.contents_list, key=lambda x: x[0]))
         self.contents = "".join(sorted_contents_list)
         return gen_header(self, object_name_to_object, "h_")
 
+class HeaderInfo:
+    __slots__ = ("filename", "basename", "objs", "includes", "resolved")
+
+    def __init__(self, filename):
+        self.filename = filename
+        self.basename = pathlib.Path(filename).name
+        #print(f"self.basename: {self.basename}")
+        self.objs = []
+        self.includes = []
+        self.resolved = False
+
 class PartitionedHeaderObjs:
-    __slots__ = ("defs", "decls", "enums")
+    __slots__ = ("defs", "decls", "funcdecls", "enums")
 
     def __init__(self, objs, filename):
         self.defs = {}
         self.decls = {}
+        self.funcdecls = {}
         self.enums = {}
+
         for obj in objs:
-            if isinstance(obj, TypedefStructDecl):
+            if isinstance(obj, (TypedefStructDecl, ExternConstDecl)):
                 old_obj = self.decls.get(obj.name)
                 if old_obj is not None:
                     raise RuntimeError(f"{filename}: {obj.name} already in self.decls! old_obj.full_filename: {old_obj.full_filename}, obj.full_filename: {obj.full_filename}")
@@ -201,6 +215,13 @@ class PartitionedHeaderObjs:
                 if obj.name in self.defs:
                     raise RuntimeError()
                 self.defs[obj.name] = obj
+            elif isinstance(obj, FuncDecl):
+                old_obj = self.decls.get(obj.name)
+                if old_obj is not None:
+                    if old_obj.contents != obj.contents:
+                        raise RuntimeError(f"{obj.name} already in funcdecls!")
+                else:
+                    self.funcdecls[obj.name] = obj
             elif isinstance(obj, EnumDef):
                 self.enums[obj.name] = obj
             else:
@@ -240,10 +261,14 @@ gf_lib_type_regex = re.compile(r"^(?:SPL|CRYPTORC4|DWC_LOBBY|pDWC_LOBBY)")
 object_regex = re.compile(r"(?<!typedef\sstruct\s)(?!}\s*)(Unk(Struct|FuncPtr|Union|Enum)_(?:ov[0-9]+_)?[0-9A-F]{8}\w*\b)(?!;)")
 #local_object_regex = re.compile(r"^\s*}\s*(Unk(Struct|FuncPtr|Union|Enum)_(?:ov[0-9]+_)?[0-9A-F]{8}\w*\b)\s*;")
 unk_obj_parts_regex = re.compile(r"^Unk(?:Struct|FuncPtr|Union)_(?:ov([0-9]+)_)?([0-9A-F]{8})(.+)?$")
-unk_obj_filename_parts_regex = re.compile(r"^(?:\"|<)?(?:struct|funcptr|union)_(?:ov([0-9]+)_)?([0-9A-F]{8})([^\.]+)?\.h(?:\"|>)?$")
+unk_obj_filename_parts_regex = re.compile(r"^(?:\"|<)?(?:overlay[0-9]+/)?(?:struct_|funcptr_|union_|unk_)?(?:ov([0-9]+)_)?([0-9A-F]{8})([^\.]+)?\.h(?:\"|>)?$")
 functype_struct_field_regex = re.compile(r"^(\w+)\s+\*?\s*\(\s*\*?\s*(\w+)\s*\)\s*\((.+)\)\s*;")
-func_decl_regex = re.compile(r"^(?!(?:extern\s+|FS_EXTERN_OVERLAY))(?:struct|union|enum\s+)?(\w+)\s*\*?\s*(\w+)\((.+)\)\s*;\s*$")
-extern_const_symbol_regex = re.compile(r"^extern\s+const\s+(\w+)\s+(\w+)(.+);\s*$")
+func_decl_regex = re.compile(r"^(?!(?:static\s+|extern\s+|FS_EXTERN_OVERLAY))(?:const\s+)?(?:struct|union|enum\s+)?(\w+)\s+(?:\*\s*)?(\w+)\((.*)\)\s*;\s*$")
+extern_const_symbol_regex = re.compile(r"^extern\s+const\s+(\w+)\s+(\w+)(.*);\s*$")
+unk_func_regex = re.compile(r"(?:sub|ov([0-9]+))_([0-9A-F]{1,8})")
+fs_overlay_id_regex = re.compile(r"FS_OVERLAY_ID\(\s*(\w+)\s*\)")
+fs_extern_overlay_regex = re.compile(r"^FS_EXTERN_OVERLAY\(\s*(\w+)\s*\)")
+struct_field_needs_def_regex = re.compile(r"^(?:struct\s+|union\s+)?\w+\s+\w+(\[[^\]]+\])*;")
 
 nitro_sdk_types = (
     NitroSDKType("WMBssDesc", "<nitro/wm.h>"),
@@ -272,6 +297,36 @@ nitro_sdk_types = (
     NitroSDKType("TPData", "<nitro.h>"),
     NitroSDKType("FSOverlayID", "<nitro/fs.h>"),
 )
+
+def validate_xmap_functions(xmap):
+    duplicate_func_names = ""
+
+    for symbol_name, symbols in xmap.symbols_by_name.items():
+        if symbols[0].section == ".text" and symbols[0].archive is None and symbol_name not in ("NitroStaticInit", "inline_ov61_0222C3B0_sub"):
+            if len(symbols) != 1:
+                duplicate_func_names += f"multiple {symbol_name}: " + ", ".join(f"{symbol.full_addr}" for symbol in symbols) + "\n"
+
+            for symbol in symbols:
+                if len(symbols) != 1:
+                    #print(f"symbol.name: {symbol.name}")
+                    continue
+                match_obj = unk_func_regex.search(symbol.name)
+                if match_obj:
+                    overlay_str = match_obj.group(1)
+                    overlay = int(overlay_str) if overlay_str is not None else -1
+                    addr = int(match_obj.group(2), 16)
+                    ov_addr = OvAddr(overlay, addr)
+                    if ov_addr != symbol.full_addr:
+                        if symbol.full_addr.overlay == -1:
+                            correct_symbol_name = f"sub_{symbol.full_addr.addr:08X}"
+                        else:
+                            correct_symbol_name = f"ov{symbol.full_addr.overlay}_{symbol.full_addr.addr:08X}"
+                        duplicate_func_names += f"./replace.sh {symbol.name} {correct_symbol_name}\n"
+                elif symbol.name == "ov5_021D15B4":
+                    print("ov5_021D15B4")
+
+    if duplicate_func_names != "":
+        raise RuntimeError(f"Multiple same symbol names and/or wrong symbol addresses detected!\n\n{duplicate_func_names}")
 
 hardcoded_struct_deps = {
     "UnkStruct_ov97_0223685C": ["UnkStruct_ov97_02236380_sub1", "UnkStruct_ov97_02236380_sub2", "UnkStruct_ov97_02236380_sub3", "UnkStruct_ov97_02236380_sub4"],
@@ -309,12 +364,14 @@ def parse_struct_or_union(line_reader, is_typedef=True):
         elif stripped_line != "" and not stripped_line[-1] == "{" and not stripped_line.startswith("}"):
             stripped_field_keep_asterisk = line.replace("const", "").replace("volatile", "").replace("unsigned", "").strip()
             match_obj = functype_struct_field_regex.match(stripped_field_keep_asterisk)
+            needs_def = False
             if match_obj:
                 is_functype_struct_field = True
                 field_type = match_obj.group(1)
                 functype_args = match_obj.group(3)
             else:
                 is_functype_struct_field = False
+
                 try:
                     stripped_field = stripped_field_keep_asterisk.replace("*", "").strip()
                     field_type, rest_of_field = stripped_field.split(maxsplit=1)
@@ -328,12 +385,16 @@ def parse_struct_or_union(line_reader, is_typedef=True):
                 dependency = rest_of_field.split(maxsplit=1)[0]
             elif field_type not in sdk_types:
                 dependency = field_type
+                needs_def = struct_field_needs_def_regex.match(stripped_field_keep_asterisk) is not None
             else:
                 dependency = None
 
             if dependency is not None:
                 if word_regex.match(dependency):
-                    dependencies.append(dependency)
+                    if needs_def:
+                        dependencies.append(f"!{dependency}")
+                    else:
+                        dependencies.append(dependency)
                 else:
                     empty_typedef_structs_part += f"{line_reader.location()}: Bad type {dependency}\n"
 
@@ -453,6 +514,9 @@ def set_object_filenames_and_return_guard(obj, suffix):
     elif not obj_name.startswith("Unk"):
         raise RuntimeError(f"{obj_name} does not start with Unk!")
 
+    if obj_name.startswith("Unk_"):
+        obj_name = obj_name.replace("Unk_", "Const_")
+
     split_name = obj_name.split("_")
     name_new_parts = []
     
@@ -474,7 +538,10 @@ def set_object_filenames_and_return_guard(obj, suffix):
     header_guard = f"POKEPLATINUM_{filename_root.upper()}_H"
     
     obj.filename = filename_base
-    obj.include_filename = f"\"{include_filename}\""
+    if include_filename in ("union_020225E0.h", "union_02022594.h"):
+        obj.include_filename = "\"union_02022594_020225E0.h\""
+    else:
+        obj.include_filename = f"\"{include_filename}\""
     obj.full_filename = full_filename
     obj.header_guard = header_guard
 
@@ -532,18 +599,53 @@ def unk_obj_cmp_function(a, b):
 
 #mic_types = set(("MICResult", "MICAutoParam"))
 
-def gen_header(obj, object_name_to_object, debug_prefix=""):
-    output = ""
+def generate_includes(dependency_full_filenames, output):
+    unique_dependency_full_filenames = tuple(frozenset(dependency_full_filenames))
+    non_unk_object_header_filenames = []
+    unk_objects = []
+
+    for dependency_full_filename in unique_dependency_full_filenames:
+        try:
+            unk_object = UnkObject.from_filename(dependency_full_filename)
+            unk_objects.append(unk_object)
+        except ValueError:
+            non_unk_object_header_filenames.append(dependency_full_filename)
+            output.append(f"Non-unk: {dependency_full_filename}\n")
+
+    sorted_unique_includes = [unk_object.name for unk_object in sorted(unk_objects, key=functools.cmp_to_key(unk_obj_cmp_function))]
+    dependencies_as_str = "".join(f"#include {sorted_unique_include}\n" for sorted_unique_include in sorted_unique_includes)
+    if len(non_unk_object_header_filenames) != 0:
+        dependencies_as_str += "\n" + "".join(f"#include {non_unk_object_header_filename}\n" for non_unk_object_header_filename in non_unk_object_header_filenames)
+
+    return dependencies_as_str, output
+
+def gen_header(obj, object_name_to_object, debug_prefix="", object_name_to_typedef_struct_def=None):
+    output = []
 
     if is_gf_lib_type(obj):
         return ""
 
     dependency_full_filenames = []
+    new_dependencies = []
 
     for dependency in obj.dependencies:
+        force_def = False
+        if object_name_to_typedef_struct_def is not None:
+            if dependency[0] == "!":
+                dependency = dependency[1:]
+                force_def = True
+
+            new_dependencies.append(dependency)
+
+        object_name_to_typedef_struct_def
+        dependency_obj = None
+
         if dependency == "<enum>":
             dependency_obj = dummy_enum_def
-        else:
+        elif force_def:
+            dependency_obj = object_name_to_typedef_struct_def.get(dependency)
+
+        if dependency_obj is None:
             dependency_obj = object_name_to_object.get(dependency)
 
         if dependency_obj is None:
@@ -574,26 +676,14 @@ def gen_header(obj, object_name_to_object, debug_prefix=""):
             dependency_full_filenames.append(dependency_obj.include_filename)
             #dependencies_as_str += f"#include {}\n"
             if not dependency_obj.include_filename.endswith("_decl.h\""):
-                output += f"Non-decl: {dependency_obj.include_filename}\n"
+                output.append(f"Non-decl: {dependency_obj.include_filename}\n")
         except AttributeError:
             raise RuntimeError(f"Dependency {dependency} has no include_filename for obj {obj.name}!")
 
-    unique_dependency_full_filenames = tuple(frozenset(dependency_full_filenames))
-    non_unk_object_header_filenames = []
-    unk_objects = []
+    if object_name_to_typedef_struct_def is not None:
+        obj.dependencies = tuple(new_dependencies)
 
-    for dependency_full_filename in unique_dependency_full_filenames:
-        try:
-            unk_object = UnkObject.from_filename(dependency_full_filename)
-            unk_objects.append(unk_object)
-        except ValueError:
-            non_unk_object_header_filenames.append(dependency_full_filename)
-            output += f"Non-unk: {dependency_full_filename}\n"
-
-    sorted_unique_includes = [unk_object.name for unk_object in sorted(unk_objects, key=functools.cmp_to_key(unk_obj_cmp_function))]
-    dependencies_as_str = "".join(f"#include {sorted_unique_include}\n" for sorted_unique_include in sorted_unique_includes)
-    if len(non_unk_object_header_filenames) != 0:
-        dependencies_as_str += "\n" + "".join(f"#include {non_unk_object_header_filename}\n" for non_unk_object_header_filename in non_unk_object_header_filenames)
+    dependencies_as_str, output = generate_includes(dependency_full_filenames, output)
 
     try:
         header_guard = obj.header_guard
@@ -611,7 +701,10 @@ def gen_header(obj, object_name_to_object, debug_prefix=""):
 
 #endif // {header_guard}
 """
-    full_filepath = pathlib.Path(f"{debug_prefix}{obj.full_filename}")
+    if not DEBUG:
+        debug_prefix = ""
+
+    full_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{debug_prefix}{obj.full_filename}")
     full_filepath.parent.mkdir(parents=True, exist_ok=True)
 
     with open(full_filepath, "w+") as f:
@@ -620,7 +713,7 @@ def gen_header(obj, object_name_to_object, debug_prefix=""):
     return output
 
 special_headers = set((
-    "nnsys.h", "src/data/arc_tool.dat"
+    "nnsys.h", "src/data/arc_tool.dat", "string.h", "dwc.h", "fushigi/agbpoke2dppoke.c"
 ))
 
 def get_header_objs(header_info, header_infos):
@@ -649,6 +742,19 @@ def get_header_objs_helper(header_info, header_infos, processed_includes):
 
     return calculated_header_objs
 
+def find_all_from_iterable(content, iterable):
+    pattern = re.compile("\\b" + "\\b|\\b".join(re.escape(k) if k[0] != "!" else k[1:] for k in iterable) + "\\b", flags=re.DOTALL)
+    return frozenset(pattern.findall(content))
+
+system_macros = set(("XtOffset", "NELEMS", "ROUND_UP", "ROUND_DOWN"))
+sdkdef_enums = set(("GX_BLEND_BGALL", "GX_BLEND_ALL", "GX_WND_PLANEMASK_BGALL", "GX_WND_PLANEMASK_ALL"))
+
+extra_symbols_look_for = set((
+    "GF_ASSERT", "Unk_021BF67C", "Unk_02100844", "Unk_020EE4B8",
+    "Unk_ov62_02248F58", "Unk_ov62_022490DC", "Unk_ov62_02249680", "Unk_ov62_0224962C", "Unk_ov62_02249618", "Unk_ov62_02248BD8", "Unk_ov62_02248BF0", "Unk_ov62_02249790", "Unk_ov62_02248C28", "Unk_ov62_02248C50", "Unk_ov62_02248D08", "Unk_ov62_02248D20", "Unk_ov62_02248E24", "Unk_ov62_02248E50",
+    r"!inline\w+"
+)) | system_macros | sdkdef_enums
+
 def main():
     found_typedef_struct_header_names = ""
     found_typedef_nonstructs = ""
@@ -672,6 +778,10 @@ def main():
     extern_const_decls = []
 
     header_infos = {}
+
+    xmap = XMap("../00jupc_retsam/bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
+
+    validate_xmap_functions(xmap)
 
     with open("sanitized_src_files.txt", "r") as f:
         c_filenames = [f"../00jupc_retsam/{c_filename_partial}" for c_filename_partial in f.read().strip().splitlines() if c_filename_partial != "src/overlay060/ov60_0221F968.c"]
@@ -819,6 +929,7 @@ def main():
                     enum_def, cur_enum_values = parse_enum(line_reader, is_typedef=False)
                     enum_values += cur_enum_values
                     enum_defs.append(enum_def)
+                    header_info.objs.append(enum_def)
                 else:
                     match_obj = include_regex.match(line)
                     if match_obj:
@@ -838,18 +949,19 @@ def main():
                                 non_sdk_type_args.extend(functype_hardcoded_arg_deps)
                             else:
                                 functype_args = match_obj.group(3)
-                                functype_args_split = comma_regex.split(functype_args)
-    
-                                for arg in functype_args_split:
-                                    stripped_arg = arg.replace("const ", "").replace("volatile ", "").replace("struct ", "").replace("unsigned ", "").replace("*", "").strip()
-                                    stripped_arg_split = stripped_arg.split()
-                                    if len(stripped_arg_split) not in (1, 2):
-                                        line_reader.at_file_error(f"functype has arg with more than two parts! line: {line}")
-                                    else:
-                                        arg_type = stripped_arg_split[0]
-                
-                                    if arg_type not in sdk_types:
-                                        non_sdk_type_args.append(arg_type)
+                                if functype_args != "":
+                                    functype_args_split = comma_regex.split(functype_args)
+        
+                                    for arg in functype_args_split:
+                                        stripped_arg = arg.replace("const ", "").replace("volatile ", "").replace("struct ", "").replace("unsigned ", "").replace("*", "").strip()
+                                        stripped_arg_split = stripped_arg.split()
+                                        if len(stripped_arg_split) not in (1, 2):
+                                            line_reader.at_file_error(f"functype has arg with more than two parts! line: {line}")
+                                        else:
+                                            arg_type = stripped_arg_split[0]
+                    
+                                        if arg_type not in sdk_types:
+                                            non_sdk_type_args.append(arg_type)
 
                             func_decl = FuncDecl(functype_name, line, non_sdk_type_args)
                             old_func_decl = func_decls.get(functype_name)
@@ -857,6 +969,7 @@ def main():
                                 line_reader.at_file_error(f"{functype_name} has duplicate func decl! old: {old_func_decl.contents.strip()}, new: {line.strip()}")
 
                             func_decls[functype_name] = func_decl
+                            header_info.objs.append(func_decl)
                         else:
                             match_obj = extern_const_symbol_regex.match(line)
                             if match_obj:
@@ -873,36 +986,38 @@ def main():
 
                                 extern_const_decl = ExternConstDecl(extern_const_name, line, dependencies)
                                 extern_const_decls.append(extern_const_decl)
+                                header_info.objs.append(extern_const_decl)
 
-    find_objects(glob.glob("../00jupc_retsam/include/**/*.h", recursive=True), "header_filename")
+    all_header_files = tuple(glob.glob("../00jupc_retsam/include/**/*.h", recursive=True))
+    find_objects(all_header_files, "header_filename")
     #for header_filename in itertools.chain(glob.glob("../00jupc_retsam/include/**/*.h", recursive=True), c_filenames):
     #for header_filename in :
 
-    output = ""
-    output += "== found_typedef_struct_header_names ==\n"
-    output += found_typedef_struct_header_names
-    output += "== found_typedef_nonstructs ==\n"
-    output += found_typedef_nonstructs
-    output += "== empty_typedef_structs ==\n"
-    output += empty_typedef_structs
-    output += "== open_bracket_in_struct_def ==\n"
-    output += open_bracket_in_struct_def
-    output += "== enum_locations ==\n"
-    output += enum_locations
-    output += "== enum_values ==\n"
-    output += enum_values
-    output += "== struct_decl_locations ==\n"
-    output += struct_decl_locations
-    output += "== struct_def_locations ==\n"
-    output += struct_def_locations
-    output += "== functype_args_locations ==\n"
-    output += functype_args_locations
-    output += "== functype_stripped_args ==\n"
-    output += functype_stripped_args
-    output += "== probably_func_decl_struct_returns ==\n"
-    output += probably_func_decl_struct_returns
-    output += "== probably_func_def_struct_returns ==\n"
-    output += probably_func_def_struct_returns
+    output = []
+    output.append("== found_typedef_struct_header_names ==\n")
+    output.append(found_typedef_struct_header_names)
+    output.append("== found_typedef_nonstructs ==\n")
+    output.append(found_typedef_nonstructs)
+    output.append("== empty_typedef_structs ==\n")
+    output.append(empty_typedef_structs)
+    output.append("== open_bracket_in_struct_def ==\n")
+    output.append(open_bracket_in_struct_def)
+    output.append("== enum_locations ==\n")
+    output.append(enum_locations)
+    output.append("== enum_values ==\n")
+    output.append(enum_values)
+    output.append("== struct_decl_locations ==\n")
+    output.append(struct_decl_locations)
+    output.append("== struct_def_locations ==\n")
+    output.append(struct_def_locations)
+    output.append("== functype_args_locations ==\n")
+    output.append(functype_args_locations)
+    output.append("== functype_stripped_args ==\n")
+    output.append(functype_stripped_args)
+    output.append("== probably_func_decl_struct_returns ==\n")
+    output.append(probably_func_decl_struct_returns)
+    output.append("== probably_func_def_struct_returns ==\n")
+    output.append(probably_func_def_struct_returns)
 
     typedef_struct_decl_names = []
     typedef_struct_def_names = []
@@ -910,34 +1025,34 @@ def main():
     func_type_def_names = []
     enum_names = []
 
-    output += "== typedef_struct_decls ==\n"
+    output.append("== typedef_struct_decls ==\n")
     for typedef_struct_decl in typedef_struct_decls:
-        output += f"{typedef_struct_decl.name}: {typedef_struct_decl.source}\n"
+        output.append(f"{typedef_struct_decl.name}: {typedef_struct_decl.source}\n")
         typedef_struct_decl_names.append(typedef_struct_decl.name)
 
-    output += "== typedef_struct_defs ==\n"
+    output.append("== typedef_struct_defs ==\n")
     for typedef_struct_def in typedef_struct_defs:
-        output += f"{typedef_struct_def.name}: {', '.join(typedef_struct_def.dependencies)}\n"
+        output.append(f"{typedef_struct_def.name}: {', '.join(typedef_struct_def.dependencies)}\n")
         typedef_struct_def_names.append(typedef_struct_def.name)
 
-    output += "== struct_defs ==\n"
+    output.append("== struct_defs ==\n")
     for struct_def in struct_defs:
-        output += f"{struct_def.name}: {', '.join(struct_def.dependencies)}\n"
+        output.append(f"{struct_def.name}: {', '.join(struct_def.dependencies)}\n")
         struct_def_names.append(struct_def.name)
 
-    output += "== func_type_defs ==\n"
+    output.append("== func_type_defs ==\n")
     for func_type_def in func_type_defs:
-        output += f"{func_type_def.name}: {', '.join(func_type_def.dependencies)}\n"
+        output.append(f"{func_type_def.name}: {', '.join(func_type_def.dependencies)}\n")
         func_type_def_names.append(func_type_def.name)
 
-    output += "== enum_defs ==\n"
+    output.append("== enum_defs ==\n")
     for enum_def in enum_defs:
-        output += f"{enum_def.name}\n"
+        output.append(f"{enum_def.name}\n")
         enum_names.append(enum_def.name)
 
-    output += "== extern_const_decls ==\n"
+    output.append("== extern_const_decls ==\n")
     for extern_const_decl in extern_const_decls:
-        output += f"{extern_const_decl.name}\n"
+        output.append(f"{extern_const_decl.name}\n")
         enum_names.append(extern_const_decl.name)
 
     duplicate_names = set()
@@ -945,19 +1060,23 @@ def main():
     for x, y in itertools.combinations(header_obj_names, 2):
         duplicate_names |= x & y
 
-    output += "== duplicate_names ==\n"
+    output.append("== duplicate_names ==\n")
     for duplicate_name in duplicate_names:
-        output += f"{duplicate_name}\n"
+        output.append(f"{duplicate_name}\n")
 
-    output += "== Non-unk names ==\n"
+    output.append("== Non-unk names ==\n")
 
     for name in typedef_struct_decl_names + typedef_struct_def_names + struct_def_names + func_type_def_names + enum_names:
         if name is not None and "Unk" not in name:
-            output += f"{name}\n"
+            output.append(f"{name}\n")
 
     object_name_to_object = {}
 
-    output += "== typedef_struct_decl_filenames ==\n"
+    output.append("== typedef_struct_decl_filenames ==\n")
+
+    typedef_struct_decl_extra_includes = {
+        "struct_02013A04_decl.h": '#include "struct_02013A04_t.h"\n'
+    }
 
     # Create declarations first
     for typedef_struct_decl in typedef_struct_decls:
@@ -971,20 +1090,22 @@ def main():
         #if obj is not None and obj.contents != typedef_struct_decl.contents:
         #    raise RuntimeError(f"typedef_struct_decl_name {typedef_struct_decl_name} already exists in object_name_to_object!")
 
-        if typedef_struct_decl.name == "UnkStruct_0207CB08":
-            print(f"UnkStruct_0207CB08 header guard: {typedef_struct_decl.header_guard}")
+        #if typedef_struct_decl.name == "UnkStruct_0207CB08":
+        #    print(f"UnkStruct_0207CB08 header guard: {typedef_struct_decl.header_guard}")
         object_name_to_object[typedef_struct_decl_name] = typedef_struct_decl
 
-        output += f"{typedef_struct_decl.full_filename}, {header_guard}\n"
+        extra_includes = typedef_struct_decl_extra_includes.get(typedef_struct_decl.filename, "")
+
+        output.append(f"{typedef_struct_decl.full_filename}, {header_guard}\n")
         decl_filename_contents = f"""\
 #ifndef {header_guard}
 #define {header_guard}
-
+{extra_includes}
 {typedef_struct_decl.contents.strip()}
 
 #endif // {header_guard}
 """
-        full_filepath = pathlib.Path(typedef_struct_decl.full_filename)
+        full_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{typedef_struct_decl.full_filename}")
         full_filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(full_filepath, "w+") as f:
             f.write(decl_filename_contents)
@@ -996,13 +1117,17 @@ def main():
 
             object_name_to_object[enum_def.name] = enum_def
 
+    object_name_to_typedef_struct_def = {}
+
     for typedef_struct_def in typedef_struct_defs:
         # decls have priority over defs
         obj = object_name_to_object.get(typedef_struct_def.name)
         if obj is None:
             object_name_to_object[typedef_struct_def.name] = typedef_struct_def
-        elif isinstance(obj, TypedefStructDef):
-            raise RuntimeError(f"{typedef_struct_def.name} has already existing typedef struct def in object_name_to_object!")
+        else:
+            object_name_to_typedef_struct_def[typedef_struct_def.name] = typedef_struct_def
+            if isinstance(obj, TypedefStructDef):
+                raise RuntimeError(f"{typedef_struct_def.name} has already existing typedef struct def in object_name_to_object!")
         set_object_filenames_and_return_guard(typedef_struct_def, "")
 
     for struct_def in struct_defs:
@@ -1022,27 +1147,36 @@ def main():
     for nitro_sdk_type in nitro_sdk_types:
         object_name_to_object[nitro_sdk_type.name] = nitro_sdk_type
 
-    output += "== Func type def non decl includes ==\n"
+    output.append("== Func type def non decl includes ==\n")
 
     # create headers for func types
     for func_type_def in func_type_defs:
-        output += gen_header(func_type_def, object_name_to_object, "f_")
+        output.extend(gen_header(func_type_def, object_name_to_object, "f_"))
 
-    output += "== Typedef struct def non decl includes ==\n"
+    output.append("== Typedef struct def non decl includes ==\n")
 
     # create headers for typedef struct defs
     for typedef_struct_def in typedef_struct_defs:
-        output += gen_header(typedef_struct_def, object_name_to_object, "ts_")
+        output.extend(gen_header(typedef_struct_def, object_name_to_object, "ts_", object_name_to_typedef_struct_def=object_name_to_typedef_struct_def))
 
-    output += "==struct def non decl includes ==\n"
+    output.append("==struct def non decl includes ==\n")
 
     # create headers for struct defs
     for struct_def in struct_defs:
-        output += gen_header(struct_def, object_name_to_object, "s_")
+        #if struct_def.name == "UnkStruct_02013A04_t":
+        #    print(f"struct_def.full_filename: {struct_def.full_filename}")
+        output.extend(gen_header(struct_def, object_name_to_object, "s_", object_name_to_typedef_struct_def=object_name_to_typedef_struct_def))
 
-    xmap = XMap("../00jupc_retsam/bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
+    output.append("== extern const decl non decl includes ==\n")
+
+    for extern_const_decl in extern_const_decls:
+        set_object_filenames_and_return_guard(extern_const_decl, "")
+        output.extend(gen_header(extern_const_decl, object_name_to_object, "c_"))
 
     func_decl_headers = {}
+    funcname_to_header_filename = {
+        "CRYPTO_VerifySignature": '"nitrocrypto/crypto.h"'
+    }
 
     for func_decl in func_decls.values():
         try:
@@ -1063,10 +1197,11 @@ def main():
 
         func_decl_header.add_func_decl(func_decl, symbol)
 
-    output += "== func_decl non decl includes ==\n"
+    output.append("== func_decl non decl includes ==\n")
 
     for func_decl_header in func_decl_headers.values():
-        output += func_decl_header.gen_header_and_write(object_name_to_object)
+        func_decl_header.update_funcname_to_header_filename_mapping(funcname_to_header_filename)
+        output.extend(func_decl_header.gen_header_and_write(object_name_to_object))
 
     #for c_filename in c_filenames:
         
@@ -1076,56 +1211,289 @@ def main():
     all_header_defs_decls_intersections = {}
     all_header_objs = {}
 
-    output += "== Header objs defs & decls intersection==\n"
+    output.append("== Header objs defs & decls intersection==\n")
     for basename, header_info in header_infos.items():
         header_objs = get_header_objs(header_info, header_infos)
         all_header_objs[basename] = header_objs
         defs_decls_intersection = frozenset(header_objs.defs.keys()) & frozenset(header_objs.decls.keys())
         all_header_defs_decls_intersections[basename] = defs_decls_intersection
         if len(defs_decls_intersection) != 0:
-            output += f"{header_info.filename.replace('../00jupc_retsam/', '')}: {', '.join(def_or_decl_name for def_or_decl_name in defs_decls_intersection)}\n"
-        #output += f"{basename}: {', '.join(header_obj.name for header_obj in header_objs)}\n"
+            output.append(f"{header_info.filename.replace('../00jupc_retsam/', '')}: {', '.join(def_or_decl_name for def_or_decl_name in defs_decls_intersection)}\n")
+        #output.append(f"{basename}: {', '.join(header_obj.name for header_obj in header_objs)}\n")
         #header_guard =
 
-    #for c_filename in c_filenames:
-    #    with open(c_filename, "r") as f:
-    #        lines = f.readlines()
-    #
-    #    line_reader = LineReader(lines, c_filename)
-    #    c_file_includes = []
-    #    c_file_library_includes = []
-    #
-    #    for line in line_reader:
-    #        match_obj = include_regex.match(line)
-    #        if match_obj:
-    #            include_basename = pathlib.Path(match_obj.group(1)).name
-    #            c_file_includes.append(include_basename)
-    #        else:
-    #            match_obj = library_include_regex.match(line)
-    #            if match_obj:
-    #                c_file_library_includes.append(match_obj.group(1))
-    #
-    #    c_file_decls = []
-    #    c_file_defs = []
-    #
-    #    for include_basename in c_file_includes:
-    #        header_objs = all_header_objs[include_basename]
-            
+    gflib_header_basenames = []
+
+    for header_file in all_header_files:
+        if header_file.startswith("../00jupc_retsam/include/gflib/"):
+            gflib_header_basenames.append(pathlib.Path(header_file).name)
+
+    if False:
+        NEWLINE = "\n"
+        enum_defs_contents = [enum_def.contents for enum_def in enum_defs]
+        enum_defs_contents_str = f"""\
+#ifndef POKEPLATINUM_ENUMS_H
+#define POKEPLATINUM_ENUMS_H
+
+{NEWLINE.join(enum_defs_contents)}
+#endif // POKEPLATINUM_ENUMS_H
+"""
+        pathlib.Path(f"e_include").mkdir(parents=True, exist_ok=True)
+        with open(f"e_include/enums.h", "w+") as f:
+            f.write(enum_defs_contents_str)
+    else:
+        shutil.copyfile("e_include/enums.h", f"{OUTPUT_PREFIX}/include/enums.h")
+        shutil.copyfile("e_include/data_021BF67C.h", f"{OUTPUT_PREFIX}/include/data_021BF67C.h")
+        shutil.copyfile("e_include/const_020EE4B8.h", f"{OUTPUT_PREFIX}/include/const_020EE4B8.h")
+        shutil.copyfile("e_include/data_02100844.h", f"{OUTPUT_PREFIX}/include/data_02100844.h")
+        pathlib.Path(f"{OUTPUT_PREFIX}/include/overlay062").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile("e_include/ov62_const_funcptr_tables.h", f"{OUTPUT_PREFIX}/include/overlay062/ov62_const_funcptr_tables.h")
+
+    #def_takes_priority = frozenset(("UnkStruct_0203CDB0",))
+
+    found_typedef_struct_header_names = ""
+    found_typedef_nonstructs = ""
+    empty_typedef_structs = ""
+    open_bracket_in_struct_def = ""
+    enum_locations = ""
+    enum_values = ""
+    struct_decl_locations = ""
+    struct_def_locations = ""
+    probably_func_decl_struct_returns = ""
+    probably_func_def_struct_returns = ""
+    functype_args_locations = ""
+    functype_stripped_args = ""
+
+    typedef_struct_decls = []
+    struct_defs = []
+    typedef_struct_defs = []
+    enum_defs = []
+    func_type_defs = []
+    func_decls = {}
+    extern_const_decls = []
+
+    header_infos = {}
+
+    find_objects(c_filenames, "c_filename")
+
+    struct_decl_def_obj_names_by_c_filename = {c_filename: frozenset(obj.name for obj in header_info.objs if isinstance(obj, (TypedefStructDecl, TypedefStructDef))) for c_filename, header_info in header_infos.items()}
+
+    #c_file_object_names = []
+    #c_file_object_names.extend(typedef_struct_decl.name for typedef_struct_decl in typedef_struct_decls)
+    #c_file_object_names.extend(struct_def.name for struct_def in struct_defs)
+    #c_file_object_names.extend(typedef_struct_def.name for typedef_struct_def in typedef_struct_defs)
+
+    output.append(f"== c_file_found_declnames ==\n")
+    hardcoded_c_file_library_includes = {
+        "unk_02000C88.c": ("dwc.h",)
+    }
+
+    #manual_c_file_includes = {
+    #    "unk_0200112C.c": 
+
+    with open("overlaymap.json", "r") as f:
+        overlaymap = json.load(f)
+
+    for c_filename in c_filenames:
+        total_start_time = time.time()
+        print(f"c_filename: {c_filename}")
+        start_time = time.time()
+        with open(c_filename, "r") as f:
+            lines = f.readlines()
+        end_time = time.time()
+        print(f"readin: {end_time - start_time}")
+
+        contents = "".join(lines)
+
+        start_time = time.time()
+        unk_object_names_types = set(object_regex.findall(contents))
+        end_time = time.time()
+        print(f"object_regex: {end_time - start_time:.16f}")
+
+        found_local_object_names = []
+        c_basename = pathlib.Path(c_filename).name
+    
+        include_enums = False
+        obj_names_for_c_file = struct_decl_def_obj_names_by_c_filename[c_basename]
+        #print(f"type(obj_names_for_c_file): {type(obj_names_for_c_file).__name__}")
+        for unk_object_name, unk_object_type in unk_object_names_types:
+            if unk_object_type == "Enum":
+                include_enums = True
+            elif unk_object_name in obj_names_for_c_file:
+                found_local_object_names.append(unk_object_name)
+
+        found_local_object_names_set = frozenset(found_local_object_names)
+
+        #c_fullname = c_filename.replace("../00jupc_retsam/", "")
+        #output.append(f"{c_fullname} all unk objs: {', '.join(unk_object_name for unk_object_name, unk_object_type in unk_object_names_types)}\n")
+        #output.append(f"{c_fullname} external objs: {', '.join(unk_object.name for unk_object in unk_objects)}\n")
+        #output.append(f"{c_fullname} local objs: {', '.join(found_local_object_names)}\n\n")
+
+        c_full_filename = c_filename.replace('../00jupc_retsam/', '')
+        line_reader = LineReader(lines, c_filename)
+        c_file_includes = list(gflib_header_basenames)
+        c_file_library_includes = ["nitro.h", "stdlib.h", "string.h"]
+        c_file_library_includes.extend(hardcoded_c_file_library_includes.get(c_basename, ()))
+        special_nonlib_includes = []
+        special_includes = []
+        fs_extern_overlays = []
+
+        start_time = time.time()
+        for line in line_reader:
+            #cur_start_time = time.time()
+            match_obj = include_regex.match(line)
+            if match_obj:
+                include_name = match_obj.group(1)
+                if include_name in special_headers or include_name.startswith("src/data/"):
+                    special_includes.append(include_name)
+                    continue
+                include_basename = pathlib.Path(include_name).name
+                c_file_includes.append(include_basename)
+                if include_basename == "arc_tool.h":
+                    special_nonlib_includes.append("src/data/arc_tool.dat")
+
+                line_reader.clear_cur_line()
+            else:
+                match_obj = library_include_regex.match(line)
+                if match_obj:
+                    c_file_library_includes.append(match_obj.group(1))
+                    line_reader.clear_cur_line()
+                else:
+                    match_obj = fs_extern_overlay_regex.match(line)
+                    if match_obj:
+                        fs_extern_overlays.append(match_obj.group(1))
+                        line_reader.clear_cur_line()
+
+            if line_reader.line_num >= 300:
+                break
+            #cur_end_time = time.time()
+            #print(f"c file line reader iter: {cur_end_time - cur_start_time}")
+
+        end_time = time.time()
+        print(f"c file line reader: {end_time - start_time:.16f}")
+
+        fs_extern_overlays_set = set(fs_extern_overlays)
+        c_file_decls = {}
+        c_file_defs = {}
+        c_file_funcdecls = {}
+
+        start_time = time.time()
+        for include_basename in c_file_includes:
+            cur_header_objs = all_header_objs[include_basename]
+            c_file_decls.update(cur_header_objs.decls)
+            c_file_defs.update(cur_header_objs.defs)
+            #c_file_decls.update({decl.name: decl for decl in cur_header_objs.decls})
+            #c_file_defs.extend({cdef.name: cdef for cdef in cur_header_objs.defs})
+            c_file_funcdecls.update(cur_header_objs.funcdecls)
+            #include_enums |= (len(cur_header_objs.enums) != 0)
+
+        c_file_nonlocal_declnames = frozenset(c_file_decls.keys()) - found_local_object_names_set
+        c_file_nonlocal_defnames = frozenset(c_file_defs.keys()) - found_local_object_names_set
+        end_time = time.time()
+
+        print(f"get header objs: {end_time - start_time:.16f}")
+        #c_file_decls = remove_duplicate_objs(c_file_decls)
+        #c_file_defs = remove_duplicate_objs(c_file_defs)
+        #c_file_funcdecls = remove_duplicate_objs(c_file_funcdecls)
+
+        c_file_content_includeless = "".join(lines).strip() + "\n"
+
+        start_time = time.time()
+        c_file_found_declnames = find_all_from_iterable(c_file_content_includeless, c_file_nonlocal_declnames)
+        c_file_found_defnames = find_all_from_iterable(c_file_content_includeless, c_file_nonlocal_defnames)
+        c_file_found_funcnames = find_all_from_iterable(c_file_content_includeless, c_file_funcdecls.keys())
+        extra_symbols = find_all_from_iterable(c_file_content_includeless, extra_symbols_look_for)
+
+        end_time = time.time()
+        print(f"find_all_from_iterable: {end_time - start_time:.16f}")
+
+        c_file_found_decls_defs_intersection = (c_file_found_declnames & c_file_found_defnames)
+        c_file_found_only_declnames = c_file_found_declnames - c_file_found_decls_defs_intersection
+
+        #if len(c_file_found_decls_defs_intersection) != 0:
+        #    output.append(f"{c_full_filename}: {', '.join(c_file_found_decls_defs_intersection)}\n")
+
+        dependency_full_filenames = []
+        for c_file_found_declname in c_file_found_only_declnames:
+            c_file_found_decl = c_file_decls[c_file_found_declname]
+            dependency_full_filenames.append(c_file_found_decl.include_filename)
+
+        decl_includes_str, output = generate_includes(dependency_full_filenames, output)
+        #if c_basename == "unk_0202602C.c":
+        #    decl_includes_str.replace("struct_02026030_decl", "struct_02026030")
+
+        dependency_full_filenames = []
+        for c_file_found_defname in c_file_found_defnames:
+            c_file_found_def = c_file_defs[c_file_found_defname]
+            dependency_full_filenames.append(c_file_found_def.include_filename)
+
+        def_includes_str, output = generate_includes(dependency_full_filenames, output)
+        if c_basename in ("unk_0202602C.c", "unk_02026150.c"):
+            def_includes_str += '#include "struct_02026030_t.h"\n'
+
+        c_file_func_include_filenames = []
+
+        for c_file_found_funcname in c_file_found_funcnames:
+            try:
+                c_file_func_include_filenames.append(funcname_to_header_filename[c_file_found_funcname])
+            except KeyError:
+                output.append(f"KeyError: {c_file_found_funcname}\n")
+                continue
+
+        func_includes_str, output = generate_includes(c_file_func_include_filenames, output)
+        if include_enums:
+            enums_include_str = "#include \"enums.h\"\n"
+        else:
+            enums_include_str = ""
+
+        for extra_symbol in extra_symbols:
+            if extra_symbol == "GF_ASSERT":
+                special_nonlib_includes.append("assert.h")
+            elif extra_symbol == "Unk_021BF67C":
+                special_nonlib_includes.append("data_021BF67C.h")
+            elif extra_symbol == "Unk_02100844":
+                special_nonlib_includes.append("data_02100844.h")
+            elif extra_symbol == "Unk_020EE4B8":
+                special_nonlib_includes.append("const_020EE4B8.h")
+            elif extra_symbol in system_macros:
+                special_nonlib_includes.append("system_macros.h")
+            elif extra_symbol.startswith("Unk_ov62"):
+                special_nonlib_includes.append("overlay062/ov62_const_funcptr_tables.h")
+            elif extra_symbol in sdkdef_enums:
+                special_nonlib_includes.append("gflib/sdkdef.h")
+            elif extra_symbol.startswith("inline"):
+                special_nonlib_includes.append("inlines.h")
+
+        special_nonlib_includes_str = "".join(f"#include \"{special_nonlib_include}\"\n" for special_nonlib_include in special_nonlib_includes)
+        c_file_library_includes_unique = {k: True for k in c_file_library_includes}.keys()
+        c_file_library_includes_str = "".join(f"#include <{c_file_library_include}>\n" for c_file_library_include in c_file_library_includes_unique)
+
+        used_overlay_ids = fs_overlay_id_regex.findall(c_file_content_includeless)
+        fs_extern_overlays_set.update(used_overlay_ids)
+        sorted_fs_extern_overlays = sorted(fs_extern_overlays_set, key=lambda x: overlaymap.get(x, 9999))
+        fs_extern_overlays_str = "".join(f"FS_EXTERN_OVERLAY({fs_extern_overlay});\n" for fs_extern_overlay in sorted_fs_extern_overlays)
+
+        new_includes = "\n".join(include_str for include_str in (enums_include_str, c_file_library_includes_str, special_nonlib_includes_str, decl_includes_str, def_includes_str, func_includes_str, fs_extern_overlays_str) if include_str != "")
+        new_c_file_content = f"{new_includes}\n{c_file_content_includeless}"
+        new_c_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{c_full_filename}")
+        new_c_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        start_time = time.time()
+        with open(new_c_filepath, "w+") as f:
+            f.write(new_c_file_content)
+        end_time = time.time()
+
+        total_end_time = time.time()
+
+        print(f"write: {end_time - start_time}\ntotal: {total_end_time - total_start_time:.16f}")
+        #output.append(f"{c_full_filename}:\n{decl_includes_str}\n{def_includes_str}\n{}============================================")
+
+    for hardcode in glob.glob("hardcodes/**/*.h", recursive=True):
+        shutil.copyfile(hardcode, f"{OUTPUT_PREFIX}/{hardcode.replace('hardcodes/', '')}")
 
     #unk_object_suffixes = set()
     #
-    #found_typedef_struct_header_names = ""
-    #found_typedef_nonstructs = ""
-    #empty_typedef_structs = ""
-    #open_bracket_in_struct_def = ""
-    #enum_locations = ""
-    #enum_values = ""
-    #struct_decl_locations = ""
-    #struct_def_locations = ""
-    #probably_func_decl_struct_returns = ""
-    #probably_func_def_struct_returns = ""
-    #functype_args_locations = ""
-    #functype_stripped_args = ""
+
     #
     #typedef_struct_decls = []
     #struct_defs = []
@@ -1135,83 +1503,51 @@ def main():
     #
     #header_infos = {}
     #
-    #find_objects(c_filenames, "c_filename")
     #
-    #obj_names_by_c_filename = {c_filename: frozenset(obj.name for obj in header_info.objs) for c_filename, header_info in header_infos.items()}
+    #
 
-    #c_file_object_names = []
-    #c_file_object_names.extend(typedef_struct_decl.name for typedef_struct_decl in typedef_struct_decls)
-    #c_file_object_names.extend(struct_def.name for struct_def in struct_defs)
-    #c_file_object_names.extend(typedef_struct_def.name for typedef_struct_def in typedef_struct_defs)
-    #c_file_object_names.extend(typedef_struct_def.name for typedef_struct_def in typedef_struct_defs)
 
-    #output += "== typedef_struct_decls c_filenames ==\n"
+    #output.append("== typedef_struct_decls c_filenames ==\n")
     #for typedef_struct_decl in typedef_struct_decls:
-    #    output += f"{typedef_struct_decl.name}: {typedef_struct_decl.source}\n"
+    #    output.append(f"{typedef_struct_decl.name}: {typedef_struct_decl.source}\n")
     #    typedef_struct_decl_names.append(typedef_struct_decl.name)
     #
-    #output += "== typedef_struct_defs c_filenames ==\n"
+    #output.append("== typedef_struct_defs c_filenames ==\n")
     #for typedef_struct_def in typedef_struct_defs:
-    #    output += f"{typedef_struct_def.name}: {', '.join(typedef_struct_def.dependencies)}\n"
+    #    output.append(f"{typedef_struct_def.name}: {', '.join(typedef_struct_def.dependencies)}\n")
     #    typedef_struct_def_names.append(typedef_struct_def.name)
     #
-    #output += "== struct_defs c_filenames ==\n"
+    #output.append("== struct_defs c_filenames ==\n")
     #for struct_def in struct_defs:
-    #    output += f"{struct_def.name}: {', '.join(struct_def.dependencies)}\n"
+    #    output.append(f"{struct_def.name}: {', '.join(struct_def.dependencies)}\n")
     #    struct_def_names.append(struct_def.name)
     #
-    #output += "== func_type_defs c_filenames ==\n"
+    #output.append("== func_type_defs c_filenames ==\n")
     #for func_type_def in func_type_defs:
-    #    output += f"{func_type_def.name}: {', '.join(func_type_def.dependencies)}\n"
+    #    output.append(f"{func_type_def.name}: {', '.join(func_type_def.dependencies)}\n")
     #    func_type_def_names.append(func_type_def.name)
     #
-    #output += "== enum_defs c_filenames ==\n"
+    #output.append("== enum_defs c_filenames ==\n")
     #for enum_def in enum_defs:
-    #    output += f"{enum_def.name}\n"
+    #    output.append(f"{enum_def.name}\n")
     #    enum_names.append(enum_def.name)
     #
-    #output += "== Unk objects for C files ==\n"
+    #output.append("== Unk objects for C files ==\n")
 
-    #for c_filename in c_filenames:
-    #    with open(c_filename, "r") as f:
-    #        contents = f.read()
-    #
-    #    unk_object_names_types = set(object_regex.findall(contents))
-    #    unk_objects = []
-    #    found_local_object_names = []
-    #    c_basename = pathlib.Path(c_filename).name
-    #
-    #    file_has_enum = False
-    #    obj_names_for_c_file = obj_names_by_c_filename[c_basename]
-    #    #print(f"type(obj_names_for_c_file): {type(obj_names_for_c_file).__name__}")
-    #    for unk_object_name, unk_object_type in unk_object_names_types:
-    #        if unk_object_type == "Enum":
-    #            file_has_enum = True
-    #        else:
-    #            if unk_object_name not in obj_names_for_c_file:
-    #                unk_objects.append(UnkObject(unk_object_name))
-    #            else:
-    #                found_local_object_names.append(unk_object_name)
-    #
-    #    for unk_object in unk_objects:
-    #        unk_object_suffixes.add(unk_object.suffix)
-    #
-    #    c_fullname = c_filename.replace("../00jupc_retsam/", "")
-    #    output += f"{c_fullname} all unk objs: {', '.join(unk_object_name for unk_object_name, unk_object_type in unk_object_names_types)}\n"
-    #    output += f"{c_fullname} external objs: {', '.join(unk_object.name for unk_object in unk_objects)}\n"
-    #    output += f"{c_fullname} local objs: {', '.join(found_local_object_names)}\n\n"
-    #
-    #output += "== Unk object suffixes ==\n"
+
+    
+    #output.append("== Unk object suffixes ==\n")
     #
     #for unk_object_suffix in unk_object_suffixes:
-    #    output += f"{unk_object_suffix}\n"
+    #    output.append(f"{unk_object_suffix}\n")
 
         #line_reader = LineReader(lines, header_filename)
         #for line in line_reader:
         #    match_obj = include_regex.match(line)
 
+    output_as_str = "".join(output)
     with open("find_structs_typedefs_out.txt", "w+") as f:
-        f.write(output)
+        f.write(output_as_str)
         
 
     #typedef_struct_defs

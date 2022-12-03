@@ -28,3 +28,4 @@ ov66.json
 *.inc
 *include/**/*.h
 *include/*.h
+overlaymap.json
