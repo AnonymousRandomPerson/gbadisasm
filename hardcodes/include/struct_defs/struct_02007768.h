@@ -1,7 +1,7 @@
 #ifndef POKEPLATINUM_STRUCT_02007768_H
 #define POKEPLATINUM_STRUCT_02007768_H
 
-#include "struct_02007C7C.h"
+#include "struct_defs/struct_02007C7C.h"
 
 #include <nnsys.h>
 

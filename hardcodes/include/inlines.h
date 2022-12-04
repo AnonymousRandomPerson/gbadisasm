@@ -1,18 +1,30 @@
 #ifndef POKEPLATINUM_INLINES_H
 #define POKEPLATINUM_INLINES_H
 
-#include "<nitro/rtc.h>"
+#include <nitro/rtc.h>
 
-#include "struct_02006C24_decl.h"
-#include "struct_0201CD38_decl.h"
-#include "struct_0203A790_decl.h"
-#include "struct_020507E4_decl.h"
-#include "struct_0203E724_decl.h
+#include "struct_decls/struct_02006C24_decl.h"
+#include "struct_decls/struct_0201CD38_decl.h"
+#include "struct_decls/struct_0203A790_decl.h"
+#include "struct_decls/struct_020507E4_decl.h"
+#include "struct_decls/struct_0203E724_decl.h"
 
-#include "struct_0203CDB0.h"
-#include "struct_0203E724_t.h"
-#include "struct_02049FA8.h"
+#include "struct_defs/struct_0203CDB0.h"
+#include "struct_defs/struct_0203E724_t.h"
+#include "struct_defs/struct_02049FA8.h"
 #include "overlay061/struct_ov61_0222C3B0.h"
+
+#include "assert.h"
+#include "unk_02002F38.h"
+#include "unk_02006E3C.h"
+#include "unk_0200D9E8.h"
+#include "unk_02017E74.h"
+#include "unk_0201D15C.h"
+#include "unk_0203A024.h"
+#include "unk_0203A6DC.h"
+#include "unk_0203E724.h"
+#include "unk_0203E880.h"
+#include "unk_0206A8DC.h"
 
 static inline void inline_ov61_0222C3B0_sub_1(UnkStruct_ov61_0222C3B0 * v0);
 static inline void inline_ov61_0222C3B0_sub(UnkStruct_0201CD38 * tcb, void * work);

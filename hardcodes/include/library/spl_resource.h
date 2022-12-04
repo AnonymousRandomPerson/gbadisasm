@@ -2,7 +2,7 @@
 #define POKEPLATINUM_SPL_RESOURCE_H
 
 #include "spl_field.h"
-#include "struct_020147B8.h"
+#include "struct_defs/struct_020147B8.h"
 
 typedef union {
     u32 all;

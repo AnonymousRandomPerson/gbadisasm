@@ -61,6 +61,13 @@ def main():
     xmap = XMap("../00jupc_retsam/bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
 
     output = ""
+    rodata_only_files = frozenset((
+        "fieldobj_movedata.o",
+        "opening_call.o",
+        "fieldobj_drawdata.o",
+        "field_effect_data.o",
+        "slot_data.o"
+    ))
 
     with open("../00jupc_retsam/make_prog_files", "r", encoding="ascii", errors="replace") as f:
         prog_files = f.read()
@@ -76,15 +83,20 @@ def main():
             print(f"{obj_file} missing in XMap!")
         else:
             text_symbols_by_filename = sorted(filter(lambda x: x.section == ".text", symbols_by_filename), key=lambda x: x.full_addr)
-            if len(text_symbols_by_filename) == 0:
-                print(f"{obj_file} has no .text section!")
+            if len(text_symbols_by_filename) != 0:
+                first_symbol = text_symbols_by_filename[0]
+            elif obj_file in rodata_only_files:
+                rodata_symbols_by_filename = sorted(filter(lambda x: x.section == ".rodata", symbols_by_filename), key=lambda x: x.full_addr)
+                first_symbol = rodata_symbols_by_filename[0]
             else:
-                first_text_symbol = text_symbols_by_filename[0]
-                if first_text_symbol.full_addr.overlay == -1:
-                    sanitized_filename = f"unk_{first_text_symbol.full_addr.addr:08X}.c"
+                first_symbol = None
+
+            if first_symbol is not None:
+                if first_symbol.full_addr.overlay == -1:
+                    sanitized_filename = f"unk_{first_symbol.full_addr.addr:08X}.c"
                 else:
-                    sanitized_filename = f"overlay{first_text_symbol.full_addr.overlay:03d}/ov{first_text_symbol.full_addr.overlay}_{first_text_symbol.full_addr.addr:08X}.c"
-                    pathlib.Path(f"../00jupc_retsam/src/overlay{first_text_symbol.full_addr.overlay:03d}").mkdir(parents=True, exist_ok=True)
+                    sanitized_filename = f"overlay{first_symbol.full_addr.overlay:03d}/ov{first_symbol.full_addr.overlay}_{first_symbol.full_addr.addr:08X}.c"
+                    pathlib.Path(f"../00jupc_retsam/src/overlay{first_symbol.full_addr.overlay:03d}").mkdir(parents=True, exist_ok=True)
 
                 output += f"{full_src_files[0]} -> src/{sanitized_filename}\n"
                 shutil.move(full_src_files[0], f"../00jupc_retsam/src/{sanitized_filename}")

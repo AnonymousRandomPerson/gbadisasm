@@ -261,10 +261,10 @@ gf_lib_type_regex = re.compile(r"^(?:SPL|CRYPTORC4|DWC_LOBBY|pDWC_LOBBY)")
 object_regex = re.compile(r"(?<!typedef\sstruct\s)(?!}\s*)(Unk(Struct|FuncPtr|Union|Enum)_(?:ov[0-9]+_)?[0-9A-F]{8}\w*\b)(?!;)")
 #local_object_regex = re.compile(r"^\s*}\s*(Unk(Struct|FuncPtr|Union|Enum)_(?:ov[0-9]+_)?[0-9A-F]{8}\w*\b)\s*;")
 unk_obj_parts_regex = re.compile(r"^Unk(?:Struct|FuncPtr|Union)_(?:ov([0-9]+)_)?([0-9A-F]{8})(.+)?$")
-unk_obj_filename_parts_regex = re.compile(r"^(?:\"|<)?(?:overlay[0-9]+/)?(?:struct_|funcptr_|union_|unk_)?(?:ov([0-9]+)_)?([0-9A-F]{8})([^\.]+)?\.h(?:\"|>)?$")
+unk_obj_filename_parts_regex = re.compile(r"^(?:\"|<)?(?:(?:overlay[0-9]+|struct_defs|struct_decls|functypes|constdata)/)?(?:struct_|funcptr_|union_|unk_)?(?:ov([0-9]+)_)?([0-9A-F]{8})([^\.]+)?\.h(?:\"|>)?$")
 functype_struct_field_regex = re.compile(r"^(\w+)\s+\*?\s*\(\s*\*?\s*(\w+)\s*\)\s*\((.+)\)\s*;")
 func_decl_regex = re.compile(r"^(?!(?:static\s+|extern\s+|FS_EXTERN_OVERLAY))(?:const\s+)?(?:struct|union|enum\s+)?(\w+)\s+(?:\*\s*)?(\w+)\((.*)\)\s*;\s*$")
-extern_const_symbol_regex = re.compile(r"^extern\s+const\s+(\w+)\s+(\w+)(.*);\s*$")
+extern_const_symbol_regex = re.compile(r"^extern\s+const\s+(\w+)\s+(?:\*+\s*)?(?:const\s+)?(\w+)(.*);\s*$")
 unk_func_regex = re.compile(r"(?:sub|ov([0-9]+))_([0-9A-F]{1,8})")
 fs_overlay_id_regex = re.compile(r"FS_OVERLAY_ID\(\s*(\w+)\s*\)")
 fs_extern_overlay_regex = re.compile(r"^FS_EXTERN_OVERLAY\(\s*(\w+)\s*\)")
@@ -500,7 +500,7 @@ def remove_duplicate_objs(objs):
     unduped_objs_dict = {id(obj): obj for obj in objs}
     return tuple(unduped_objs_dict.values())
 
-def set_object_filenames_and_return_guard(obj, suffix):
+def set_object_filenames_and_return_guard(obj, suffix, non_overlay_prefix):
     obj_name = obj.name
     if obj_name.startswith("SPL"):
         obj.include_filename = "\"library/spl.h\""
@@ -532,14 +532,14 @@ def set_object_filenames_and_return_guard(obj, suffix):
     if match_obj:
         include_filename = f"overlay{int(match_obj.group(1), 10):03d}/{filename_base}"
     else:
-        include_filename = f"{filename_base}"
+        include_filename = f"{non_overlay_prefix}/{filename_base}"
     
     full_filename = f"include/{include_filename}"
     header_guard = f"POKEPLATINUM_{filename_root.upper()}_H"
     
     obj.filename = filename_base
-    if include_filename in ("union_020225E0.h", "union_02022594.h"):
-        obj.include_filename = "\"union_02022594_020225E0.h\""
+    if include_filename in ("struct_defs/union_020225E0.h", "struct_defs/union_02022594.h"):
+        obj.include_filename = "\"struct_defs/union_02022594_020225E0.h\""
     else:
         obj.include_filename = f"\"{include_filename}\""
     obj.full_filename = full_filename
@@ -644,6 +644,15 @@ def gen_header(obj, object_name_to_object, debug_prefix="", object_name_to_typed
             dependency_obj = dummy_enum_def
         elif force_def:
             dependency_obj = object_name_to_typedef_struct_def.get(dependency)
+            if dependency_obj is None:
+                if dependency.endswith("_t"):
+                    dependency_obj = object_name_to_typedef_struct_def.get(dependency[:-2])
+                else:
+                    dependency_obj = object_name_to_typedef_struct_def.get(f"{dependency}_t")
+                    if dependency_obj is not None and "_t.h" in dependency_obj.include_filename:
+                        dependency_full_filenames.append(
+                            dependency_obj.include_filename.replace("_t.h", "_decl.h").replace("struct_defs", "struct_decls")
+                        )
 
         if dependency_obj is None:
             dependency_obj = object_name_to_object.get(dependency)
@@ -754,6 +763,9 @@ extra_symbols_look_for = set((
     "Unk_ov62_02248F58", "Unk_ov62_022490DC", "Unk_ov62_02249680", "Unk_ov62_0224962C", "Unk_ov62_02249618", "Unk_ov62_02248BD8", "Unk_ov62_02248BF0", "Unk_ov62_02249790", "Unk_ov62_02248C28", "Unk_ov62_02248C50", "Unk_ov62_02248D08", "Unk_ov62_02248D20", "Unk_ov62_02248E24", "Unk_ov62_02248E50",
     r"!inline\w+"
 )) | system_macros | sdkdef_enums
+
+
+UnkStruct_0203CDB0_sub2_t_def_files = set(("ov5_021D0D80.c", "ov5_021D1A94.c", "ov5_021D1C30.c", "ov5_021D5EB8.c", "ov5_021DD6FC.c", "ov5_021DDAE4.c", "ov5_021DDBE8.c", "ov5_021E2338.c", "ov5_021EA714.c", "ov5_021EE75C.c", "ov5_021F007C.c", "ov5_021F8370.c", "ov6_0223E140.c", "ov6_02240C9C.c", "ov6_02248050.c", "ov6_02248948.c", "ov8_02249960.c", "ov9_02249960.c", "ov23_0223E140.c", "ov23_02254A14.c", "unk_0203CC84.c", "unk_0203F6C4.c", "unk_02046C7C.c", "unk_02048DD8.c", "unk_02050568.c", "unk_02055C50.c", "unk_02056B30.c", "unk_0206C0E8.c", "unk_0206C784.c", "unk_0206CCB0.c", "unk_0207160C.c", "unk_02071B10.c", "unk_02071CFC.c"))
 
 def main():
     found_typedef_struct_header_names = ""
@@ -935,7 +947,7 @@ def main():
                     if match_obj:
                         header_info.includes.append(match_obj.group(1))
                     elif not any(filename.endswith(func_decl_ignore_filename) for func_decl_ignore_filename in func_decl_ignored_files):
-                        match_obj = func_decl_regex.match(line)
+                        match_obj = func_decl_regex.match(line.replace("const ", ""))
                         if match_obj:
                             functype_returntype = match_obj.group(1)
                             functype_name = match_obj.group(2)
@@ -1075,7 +1087,7 @@ def main():
     output.append("== typedef_struct_decl_filenames ==\n")
 
     typedef_struct_decl_extra_includes = {
-        "struct_02013A04_decl.h": '#include "struct_02013A04_t.h"\n'
+        "struct_02013A04_decl.h": '#include "struct_defs/struct_02013A04_t.h"\n'
     }
 
     # Create declarations first
@@ -1084,7 +1096,7 @@ def main():
         if typedef_struct_decl_name == typedef_struct_decl.source:
             raise RuntimeError(f"typedef_struct_decl source name same as name! name: {typedef_struct_decl_name}, source: {typedef_struct_decl.source}")
 
-        header_guard = set_object_filenames_and_return_guard(typedef_struct_decl, "_decl")
+        header_guard = set_object_filenames_and_return_guard(typedef_struct_decl, "_decl", "struct_decls")
 
         obj = object_name_to_object.get(typedef_struct_decl_name)
         #if obj is not None and obj.contents != typedef_struct_decl.contents:
@@ -1128,21 +1140,24 @@ def main():
             object_name_to_typedef_struct_def[typedef_struct_def.name] = typedef_struct_def
             if isinstance(obj, TypedefStructDef):
                 raise RuntimeError(f"{typedef_struct_def.name} has already existing typedef struct def in object_name_to_object!")
-        set_object_filenames_and_return_guard(typedef_struct_def, "")
+        set_object_filenames_and_return_guard(typedef_struct_def, "", "struct_defs")
 
     for struct_def in struct_defs:
         if struct_def.name in object_name_to_object:
             raise RuntimeError(f"{struct_def.name} already exists in object_name_to_object!")
 
         object_name_to_object[struct_def.name] = struct_def
-        set_object_filenames_and_return_guard(struct_def, "")
+        if struct_def.name not in object_name_to_typedef_struct_def:
+            object_name_to_typedef_struct_def[struct_def.name] = struct_def
+
+        set_object_filenames_and_return_guard(struct_def, "", "struct_defs")
 
     for func_type_def in func_type_defs:
         if func_type_def.name in object_name_to_object:
             raise RuntimeError()
 
         object_name_to_object[func_type_def.name] = func_type_def
-        set_object_filenames_and_return_guard(func_type_def, "")
+        set_object_filenames_and_return_guard(func_type_def, "", "functypes")
 
     for nitro_sdk_type in nitro_sdk_types:
         object_name_to_object[nitro_sdk_type.name] = nitro_sdk_type
@@ -1170,7 +1185,7 @@ def main():
     output.append("== extern const decl non decl includes ==\n")
 
     for extern_const_decl in extern_const_decls:
-        set_object_filenames_and_return_guard(extern_const_decl, "")
+        set_object_filenames_and_return_guard(extern_const_decl, "", "constdata")
         output.extend(gen_header(extern_const_decl, object_name_to_object, "c_"))
 
     func_decl_headers = {}
@@ -1241,13 +1256,19 @@ def main():
         pathlib.Path(f"e_include").mkdir(parents=True, exist_ok=True)
         with open(f"e_include/enums.h", "w+") as f:
             f.write(enum_defs_contents_str)
-    else:
-        shutil.copyfile("e_include/enums.h", f"{OUTPUT_PREFIX}/include/enums.h")
-        shutil.copyfile("e_include/data_021BF67C.h", f"{OUTPUT_PREFIX}/include/data_021BF67C.h")
-        shutil.copyfile("e_include/const_020EE4B8.h", f"{OUTPUT_PREFIX}/include/const_020EE4B8.h")
-        shutil.copyfile("e_include/data_02100844.h", f"{OUTPUT_PREFIX}/include/data_02100844.h")
-        pathlib.Path(f"{OUTPUT_PREFIX}/include/overlay062").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile("e_include/ov62_const_funcptr_tables.h", f"{OUTPUT_PREFIX}/include/overlay062/ov62_const_funcptr_tables.h")
+    #else:
+    #    pathlib.Path(f"{OUTPUT_PREFIX}/include/overlay062").mkdir(parents=True, exist_ok=True)
+    #    pathlib.Path(f"{OUTPUT_PREFIX}/include/constdata").mkdir(parents=True, exist_ok=True)
+    #    shutil.copyfile("e_include/enums.h", f"{OUTPUT_PREFIX}/include/enums.h")
+    #    shutil.copyfile("e_include/data_021BF67C.h", f"{OUTPUT_PREFIX}/include/data_021BF67C.h")
+    #    shutil.copyfile("e_include/const_020EE4B8.h", f"{OUTPUT_PREFIX}/include/constdata/const_020EE4B8.h")
+    #    shutil.copyfile("e_include/data_02100844.h", f"{OUTPUT_PREFIX}/include/data_02100844.h")
+    #    shutil.copyfile("e_include/ov62_const_funcptr_tables.h", f"{OUTPUT_PREFIX}/include/overlay062/ov62_const_funcptr_tables.h")
+
+    for hardcode in glob.glob("hardcodes/**/*.h", recursive=True):
+        hardcode_dest_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{hardcode.replace('hardcodes/', '')}")
+        hardcode_dest_filepath.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(hardcode, hardcode_dest_filepath)
 
     #def_takes_priority = frozenset(("UnkStruct_0203CDB0",))
 
@@ -1364,8 +1385,8 @@ def main():
                         fs_extern_overlays.append(match_obj.group(1))
                         line_reader.clear_cur_line()
 
-            if line_reader.line_num >= 300:
-                break
+            #if line_reader.line_num >= 300:
+            #    break
             #cur_end_time = time.time()
             #print(f"c file line reader iter: {cur_end_time - cur_start_time}")
 
@@ -1427,9 +1448,18 @@ def main():
             c_file_found_def = c_file_defs[c_file_found_defname]
             dependency_full_filenames.append(c_file_found_def.include_filename)
 
+        if c_basename in UnkStruct_0203CDB0_sub2_t_def_files:
+            dependency_full_filenames.append('"struct_defs/struct_0203CDB0_sub2_t.h"')
+        elif c_basename == "unk_0203A9C8.c":
+            dependency_full_filenames.append('"struct_defs/struct_0200D0F4.h"')
+        elif c_basename in ("unk_0203E724.c", "unk_0203E880.c"):
+            dependency_full_filenames.append('"struct_defs/struct_0203E724_t.h"')
+        elif c_basename == "unk_0205C22C.c":
+            dependency_full_filenames.append('"struct_defs/struct_0203CDB0.h"')
+
         def_includes_str, output = generate_includes(dependency_full_filenames, output)
         if c_basename in ("unk_0202602C.c", "unk_02026150.c"):
-            def_includes_str += '#include "struct_02026030_t.h"\n'
+            def_includes_str += '#include "struct_defs/struct_02026030_t.h"\n'
 
         c_file_func_include_filenames = []
 
@@ -1446,6 +1476,9 @@ def main():
         else:
             enums_include_str = ""
 
+        inline_added = False
+        ov62_const_funcptr_tables_added = False
+
         for extra_symbol in extra_symbols:
             if extra_symbol == "GF_ASSERT":
                 special_nonlib_includes.append("assert.h")
@@ -1454,16 +1487,19 @@ def main():
             elif extra_symbol == "Unk_02100844":
                 special_nonlib_includes.append("data_02100844.h")
             elif extra_symbol == "Unk_020EE4B8":
-                special_nonlib_includes.append("const_020EE4B8.h")
+                special_nonlib_includes.append("constdata/const_020EE4B8.h")
             elif extra_symbol in system_macros:
                 special_nonlib_includes.append("system_macros.h")
             elif extra_symbol.startswith("Unk_ov62"):
                 special_nonlib_includes.append("overlay062/ov62_const_funcptr_tables.h")
+                ov62_const_funcptr_tables_added = True
             elif extra_symbol in sdkdef_enums:
                 special_nonlib_includes.append("gflib/sdkdef.h")
-            elif extra_symbol.startswith("inline"):
+            elif extra_symbol.startswith("inline") and not inline_added:
                 special_nonlib_includes.append("inlines.h")
+                inline_added = True
 
+        #special_nonlib_includes_set
         special_nonlib_includes_str = "".join(f"#include \"{special_nonlib_include}\"\n" for special_nonlib_include in special_nonlib_includes)
         c_file_library_includes_unique = {k: True for k in c_file_library_includes}.keys()
         c_file_library_includes_str = "".join(f"#include <{c_file_library_include}>\n" for c_file_library_include in c_file_library_includes_unique)
@@ -1487,9 +1523,6 @@ def main():
 
         print(f"write: {end_time - start_time}\ntotal: {total_end_time - total_start_time:.16f}")
         #output.append(f"{c_full_filename}:\n{decl_includes_str}\n{def_includes_str}\n{}============================================")
-
-    for hardcode in glob.glob("hardcodes/**/*.h", recursive=True):
-        shutil.copyfile(hardcode, f"{OUTPUT_PREFIX}/{hardcode.replace('hardcodes/', '')}")
 
     #unk_object_suffixes = set()
     #
