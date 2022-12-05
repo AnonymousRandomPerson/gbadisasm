@@ -352,6 +352,8 @@ def parse_struct_or_union(line_reader, is_typedef=True):
 
     dependencies = []
 
+    #if not is_typedef and struct_name.endswith(":
+
     while True:
         line = line_reader.next()
         stripped_line = line.strip()
@@ -761,11 +763,13 @@ sdkdef_enums = set(("GX_BLEND_BGALL", "GX_BLEND_ALL", "GX_WND_PLANEMASK_BGALL", 
 extra_symbols_look_for = set((
     "GF_ASSERT", "Unk_021BF67C", "Unk_02100844", "Unk_020EE4B8",
     "Unk_ov62_02248F58", "Unk_ov62_022490DC", "Unk_ov62_02249680", "Unk_ov62_0224962C", "Unk_ov62_02249618", "Unk_ov62_02248BD8", "Unk_ov62_02248BF0", "Unk_ov62_02249790", "Unk_ov62_02248C28", "Unk_ov62_02248C50", "Unk_ov62_02248D08", "Unk_ov62_02248D20", "Unk_ov62_02248E24", "Unk_ov62_02248E50",
-    r"!inline\w+"
+    r"!inline\w+", r"!DWC_\w+", r"!PPW_\w+", r"!POKE_NET_GDS_\w+"
 )) | system_macros | sdkdef_enums
 
 
 UnkStruct_0203CDB0_sub2_t_def_files = set(("ov5_021D0D80.c", "ov5_021D1A94.c", "ov5_021D1C30.c", "ov5_021D5EB8.c", "ov5_021DD6FC.c", "ov5_021DDAE4.c", "ov5_021DDBE8.c", "ov5_021E2338.c", "ov5_021EA714.c", "ov5_021EE75C.c", "ov5_021F007C.c", "ov5_021F8370.c", "ov6_0223E140.c", "ov6_02240C9C.c", "ov6_02248050.c", "ov6_02248948.c", "ov8_02249960.c", "ov9_02249960.c", "ov23_0223E140.c", "ov23_02254A14.c", "unk_0203CC84.c", "unk_0203F6C4.c", "unk_02046C7C.c", "unk_02048DD8.c", "unk_02050568.c", "unk_02055C50.c", "unk_02056B30.c", "unk_0206C0E8.c", "unk_0206C784.c", "unk_0206CCB0.c", "unk_0207160C.c", "unk_02071B10.c", "unk_02071CFC.c"))
+
+included_src_data_filenames = ("src/data/rematch.dat", "src/data/waza_oshie.dat", "src/data/accessory_shop.dat", "src/data/battle_w_type12_ncl_txt.dat", "src/data/battle_w_type04_ncl_txt.dat", "src/data/battle_w_type14_ncl_txt.dat", "src/data/battle_w_type10_ncl_txt.dat", "src/data/battle_w_type08_ncl_txt.dat", "src/data/battle_w_type02_ncl_txt.dat", "src/data/battle_w_type17_ncl_txt.dat", "src/data/battle_w_type06_ncl_txt.dat", "src/data/battle_w_type13_ncl_txt.dat", "src/data/battle_w_type18_ncl_txt.dat", "src/data/battle_w_type15_ncl_txt.dat", "src/data/battle_w_type16_ncl_txt.dat", "src/data/battle_w_type05_ncl_txt.dat", "src/data/battle_w_type09_ncl_txt.dat", "src/data/battle_w_type03_ncl_txt.dat", "src/data/battle_w_type07_ncl_txt.dat", "src/data/battle_w_type11_ncl_txt.dat", "src/data/battle_w_type01_ncl_txt.dat", "src/data/battle_w_type00_ncl_txt.dat", "src/data/tr_ai.dat", "src/data/gage_parts_txt.dat", "src/data/dance.dat", "src/data/con_engi_type_ncl_txt.dat", "src/data/actin_waza.dat", "src/data/actin_ai_tbl.dat", "src/data/zkn_hidemap.dat", "src/data/treasure_info.dat", "src/data/trap_info.dat", "src/data/seed_data.dat", "src/data/kinomi_init.dat", "src/data/town.dat", "src/data/pokemonrangerdata.dat", "src/data/agbitemexist.dat", "src/data/tokuseicnv.dat", "src/data/stafflist.dat", "src/data/b_tower_fld.dat", "src/data/stage.dat", "src/data/factory.dat", "src/data/castle_item.dat", "src/data/roulette.dat", "src/data/footprint_stamp_control.dat", "src/data/footprint_control.dat", "src/data/footprint_foot.dat", "src/data/bb_data.dat", "src/data/balloon_control.dat", "src/data/patch.dat", "src/data/pms_word.dat", "src/data/maptable.dat", "src/data/warpdata.dat", "src/data/caldata.dat", "src/data/hide_item.dat", "src/data/shop_item.dat", "src/data/fs_item.dat", "src/data/fs_goods.dat", "src/data/fs_seal.dat", "src/data/tr_bgm.dat", "src/data/goods_size_info.dat", "src/data/map_attr.dat", "src/data/field_tornworld_pos.dat", "src/data/kinomi_zone.dat", "src/data/cubelike.dat", "src/data/trtype_sex.dat", "src/data/pokeicon.dat", "src/data/itemindex.dat", "src/data/waza_mcn.dat", "src/data/itemtype.dat", "src/data/namein.dat", "src/data/ap_waza.dat", "src/data/cb_data.dat", "src/data/porudata.dat", "src/data/geo_sort.dat", "src/data/pms_input.dat")
 
 def main():
     found_typedef_struct_header_names = ""
@@ -1190,7 +1194,8 @@ def main():
 
     func_decl_headers = {}
     funcname_to_header_filename = {
-        "CRYPTO_VerifySignature": '"nitrocrypto/crypto.h"'
+        "CRYPTO_VerifySignature": '"nitrocrypto/crypto.h"',
+        
     }
 
     for func_decl in func_decls.values():
@@ -1315,6 +1320,13 @@ def main():
     with open("overlaymap.json", "r") as f:
         overlaymap = json.load(f)
 
+    src_data_first_lines = {}
+
+    for src_data_filename in included_src_data_filenames:
+        with open(f"../00jupc_retsam/{src_data_filename}", "r") as f:
+            first_line = f.readline()
+            src_data_first_lines[src_data_filename] = first_line
+
     for c_filename in c_filenames:
         total_start_time = time.time()
         print(f"c_filename: {c_filename}")
@@ -1358,6 +1370,7 @@ def main():
         special_nonlib_includes = []
         special_includes = []
         fs_extern_overlays = []
+        src_data_first_lines_to_append = []
 
         start_time = time.time()
         for line in line_reader:
@@ -1365,7 +1378,16 @@ def main():
             match_obj = include_regex.match(line)
             if match_obj:
                 include_name = match_obj.group(1)
-                if include_name in special_headers or include_name.startswith("src/data/"):
+                is_special_include = False
+                if include_name in special_headers:
+                    is_special_include = True
+                elif include_name.startswith("src/data/"):
+                    is_special_include = True
+                    src_data_first_line = src_data_first_lines.get(include_name)
+                    if src_data_first_line is not None:
+                        src_data_first_lines_to_append.append(src_data_first_line)
+
+                if is_special_include:
                     special_includes.append(include_name)
                     continue
                 include_basename = pathlib.Path(include_name).name
@@ -1408,8 +1430,10 @@ def main():
             c_file_funcdecls.update(cur_header_objs.funcdecls)
             #include_enums |= (len(cur_header_objs.enums) != 0)
 
+        c_file_untagged_defs = {c_file_def[:-2] for c_file_def in c_file_defs.keys() if c_file_def.endswith("_t")}
+
         c_file_nonlocal_declnames = frozenset(c_file_decls.keys()) - found_local_object_names_set
-        c_file_nonlocal_defnames = frozenset(c_file_defs.keys()) - found_local_object_names_set
+        c_file_nonlocal_defnames = frozenset(itertools.chain(c_file_defs.keys(), c_file_untagged_defs)) - found_local_object_names_set
         end_time = time.time()
 
         print(f"get header objs: {end_time - start_time:.16f}")
@@ -1417,7 +1441,9 @@ def main():
         #c_file_defs = remove_duplicate_objs(c_file_defs)
         #c_file_funcdecls = remove_duplicate_objs(c_file_funcdecls)
 
-        c_file_content_includeless = "".join(lines).strip() + "\n"
+        #lines.extend(src_data_first_lines_to_append)
+        c_file_content_includeless_no_src_data_first_lines = "".join(lines).strip() + "\n"
+        c_file_content_includeless = f"{c_file_content_includeless_no_src_data_first_lines}\n{''.join(src_data_first_lines_to_append)}"
 
         start_time = time.time()
         c_file_found_declnames = find_all_from_iterable(c_file_content_includeless, c_file_nonlocal_declnames)
@@ -1428,7 +1454,8 @@ def main():
         end_time = time.time()
         print(f"find_all_from_iterable: {end_time - start_time:.16f}")
 
-        c_file_found_decls_defs_intersection = (c_file_found_declnames & c_file_found_defnames)
+        # include decls for tagged defs
+        c_file_found_decls_defs_intersection = (c_file_found_declnames & (c_file_found_defnames - c_file_untagged_defs))
         c_file_found_only_declnames = c_file_found_declnames - c_file_found_decls_defs_intersection
 
         #if len(c_file_found_decls_defs_intersection) != 0:
@@ -1439,23 +1466,40 @@ def main():
             c_file_found_decl = c_file_decls[c_file_found_declname]
             dependency_full_filenames.append(c_file_found_decl.include_filename)
 
+        if c_basename == "ov12_0221FC20.c":
+            dependency_full_filenames.extend((
+                '"overlay012/struct_ov12_0222118C_decl.h"',
+                '"overlay012/struct_ov12_022211D8_decl.h"',
+                '"overlay012/struct_ov12_022222D4_decl.h"'
+            ))
+
         decl_includes_str, output = generate_includes(dependency_full_filenames, output)
         #if c_basename == "unk_0202602C.c":
         #    decl_includes_str.replace("struct_02026030_decl", "struct_02026030")
 
         dependency_full_filenames = []
         for c_file_found_defname in c_file_found_defnames:
-            c_file_found_def = c_file_defs[c_file_found_defname]
+            c_file_found_def = c_file_defs.get(c_file_found_defname)
+            if c_file_found_def is None:
+                c_file_found_def = c_file_defs.get(f"{c_file_found_defname}_t")
+
             dependency_full_filenames.append(c_file_found_def.include_filename)
 
         if c_basename in UnkStruct_0203CDB0_sub2_t_def_files:
             dependency_full_filenames.append('"struct_defs/struct_0203CDB0_sub2_t.h"')
-        elif c_basename == "unk_0203A9C8.c":
+        elif c_basename in {"unk_0203A9C8.c", "ov16_022405FC.c", "ov16_0223DF00.c", "ov16_02268520.c", "ov17_0223F118.c", "ov79_021D2268.c"}:
             dependency_full_filenames.append('"struct_defs/struct_0200D0F4.h"')
         elif c_basename in ("unk_0203E724.c", "unk_0203E880.c"):
             dependency_full_filenames.append('"struct_defs/struct_0203E724_t.h"')
-        elif c_basename == "unk_0205C22C.c":
+        elif c_basename in ("unk_0205C22C.c", "ov23_0224A1D0.c"):
             dependency_full_filenames.append('"struct_defs/struct_0203CDB0.h"')
+        elif c_basename == "ov16_0226485C.c":
+            dependency_full_filenames.append('"overlay016/struct_ov16_0225BFFC_t.h"')
+        elif c_basename == "ov17_0223DAD0.c":
+            dependency_full_filenames.append('"overlay017/struct_ov17_02252FC4.h"')
+
+        #elif c_basename == "unk_0207AE68.c":
+        #    dependency_full_filenames.append('"struct_defs/struct_0207AE68_t.h"')
 
         def_includes_str, output = generate_includes(dependency_full_filenames, output)
         if c_basename in ("unk_0202602C.c", "unk_02026150.c"):
@@ -1478,6 +1522,11 @@ def main():
 
         inline_added = False
         ov62_const_funcptr_tables_added = False
+        dwc_added = False
+        ppw_added = False
+        system_macros_added = False
+        sdkdef_enums_added = False
+        poke_net_gds_added = False
 
         for extra_symbol in extra_symbols:
             if extra_symbol == "GF_ASSERT":
@@ -1488,16 +1537,31 @@ def main():
                 special_nonlib_includes.append("data_02100844.h")
             elif extra_symbol == "Unk_020EE4B8":
                 special_nonlib_includes.append("constdata/const_020EE4B8.h")
-            elif extra_symbol in system_macros:
+
+            elif extra_symbol in system_macros and not system_macros_added:
                 special_nonlib_includes.append("system_macros.h")
-            elif extra_symbol.startswith("Unk_ov62"):
+                system_macros_added = True
+            elif extra_symbol.startswith("Unk_ov62") and not ov62_const_funcptr_tables_added:
                 special_nonlib_includes.append("overlay062/ov62_const_funcptr_tables.h")
                 ov62_const_funcptr_tables_added = True
-            elif extra_symbol in sdkdef_enums:
-                special_nonlib_includes.append("gflib/sdkdef.h")
+            elif extra_symbol.startswith("DWC_") and not dwc_added:
+                c_file_library_includes.append("dwc.h")
+                dwc_added = True
+            elif extra_symbol.startswith("PPW_") and not ppw_added:
+                c_file_library_includes.append("ppwlobby/ppw_lobby.h")
+                ppw_added = True
+            elif extra_symbol in sdkdef_enums and not sdkdef_enums_added:
+                special_nonlib_includes.append("enums.h")
+                sdkdef_enums_added = True
             elif extra_symbol.startswith("inline") and not inline_added:
                 special_nonlib_includes.append("inlines.h")
                 inline_added = True
+            elif extra_symbol.startswith("POKE_NET_GDS_") and not poke_net_gds_added:
+                func_includes_str += '#include "libgds/poke_net_gds.h"'
+                poke_net_gds_added = True
+
+        if c_basename == "ov66_022324F0.c":
+            special_nonlib_includes.append("enums.h")
 
         #special_nonlib_includes_set
         special_nonlib_includes_str = "".join(f"#include \"{special_nonlib_include}\"\n" for special_nonlib_include in special_nonlib_includes)
@@ -1510,7 +1574,7 @@ def main():
         fs_extern_overlays_str = "".join(f"FS_EXTERN_OVERLAY({fs_extern_overlay});\n" for fs_extern_overlay in sorted_fs_extern_overlays)
 
         new_includes = "\n".join(include_str for include_str in (enums_include_str, c_file_library_includes_str, special_nonlib_includes_str, decl_includes_str, def_includes_str, func_includes_str, fs_extern_overlays_str) if include_str != "")
-        new_c_file_content = f"{new_includes}\n{c_file_content_includeless}"
+        new_c_file_content = f"{new_includes}\n{c_file_content_includeless_no_src_data_first_lines}"
         new_c_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{c_full_filename}")
         new_c_filepath.parent.mkdir(parents=True, exist_ok=True)
 

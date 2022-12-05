@@ -2,6 +2,7 @@
 #define POKEPLATINUM_DWC_LOBBYLIB_H
 
 #include <ppwlobby/ppw_lobby.h>
+#include "enums.h"
 
 typedef void (* pDWC_LOBBY_UserInCallBack)(s32 userid, const void * cp_profile, void * p_work, BOOL mydata);
 typedef void (* pDWC_LOBBY_UserOutCallBack)(s32 userid, void * p_work);
