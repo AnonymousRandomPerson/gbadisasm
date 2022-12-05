@@ -1270,7 +1270,7 @@ def main():
     #    shutil.copyfile("e_include/data_02100844.h", f"{OUTPUT_PREFIX}/include/data_02100844.h")
     #    shutil.copyfile("e_include/ov62_const_funcptr_tables.h", f"{OUTPUT_PREFIX}/include/overlay062/ov62_const_funcptr_tables.h")
 
-    for hardcode in glob.glob("hardcodes/**/*.h", recursive=True):
+    for hardcode in glob.glob("hardcodes/**/*.*", recursive=True):
         hardcode_dest_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{hardcode.replace('hardcodes/', '')}")
         hardcode_dest_filepath.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(hardcode, hardcode_dest_filepath)
@@ -1326,6 +1326,9 @@ def main():
         with open(f"../00jupc_retsam/{src_data_filename}", "r") as f:
             first_line = f.readline()
             src_data_first_lines[src_data_filename] = first_line
+
+    all_new_c_includes = []
+    redundant_headers = {"standard.h", "rebooter.h"}
 
     for c_filename in c_filenames:
         total_start_time = time.time()
@@ -1391,7 +1394,8 @@ def main():
                     special_includes.append(include_name)
                     continue
                 include_basename = pathlib.Path(include_name).name
-                c_file_includes.append(include_basename)
+                if include_basename not in redundant_headers:
+                    c_file_includes.append(include_basename)
                 if include_basename == "arc_tool.h":
                     special_nonlib_includes.append("src/data/arc_tool.dat")
 
@@ -1399,7 +1403,12 @@ def main():
             else:
                 match_obj = library_include_regex.match(line)
                 if match_obj:
-                    c_file_library_includes.append(match_obj.group(1))
+                    library_include = match_obj.group(1)
+                    if library_include in {"nitro/code16.h", "nitro/code32.h", "nitro/codereset.h"}:
+                        continue
+
+                    if include_basename not in redundant_headers:
+                        c_file_library_includes.append(library_include)
                     line_reader.clear_cur_line()
                 else:
                     match_obj = fs_extern_overlay_regex.match(line)
@@ -1487,7 +1496,7 @@ def main():
 
         if c_basename in UnkStruct_0203CDB0_sub2_t_def_files:
             dependency_full_filenames.append('"struct_defs/struct_0203CDB0_sub2_t.h"')
-        elif c_basename in {"unk_0203A9C8.c", "ov16_022405FC.c", "ov16_0223DF00.c", "ov16_02268520.c", "ov17_0223F118.c", "ov79_021D2268.c"}:
+        elif c_basename in {"unk_0203A9C8.c", "ov16_022405FC.c", "ov16_0223DF00.c", "ov16_02268520.c", "ov17_0223F118.c", "ov79_021D2268.c", "ov84_022403F4.c", "ov104_02237DD8.c", "ov104_02237378.c", "ov119_021D191C.c"}:
             dependency_full_filenames.append('"struct_defs/struct_0200D0F4.h"')
         elif c_basename in ("unk_0203E724.c", "unk_0203E880.c"):
             dependency_full_filenames.append('"struct_defs/struct_0203E724_t.h"')
@@ -1497,6 +1506,13 @@ def main():
             dependency_full_filenames.append('"overlay016/struct_ov16_0225BFFC_t.h"')
         elif c_basename == "ov17_0223DAD0.c":
             dependency_full_filenames.append('"overlay017/struct_ov17_02252FC4.h"')
+        elif c_basename in {"ov104_022332B4.c", "ov104_02234838.c", "ov104_022358E8.c", "ov104_02239130.c", "ov104_022395F0.c"}:
+            dependency_full_filenames.append('"overlay104/struct_ov104_022320B4_t.h"')
+        elif c_basename in {"ov97_02237694.c", "ov97_02238534.c"}:
+            special_nonlib_includes.append("nitrocrypto/crypto.h")
+        
+        if c_basename in {"ov84_0223B5A0.c", "ov84_0223F040.c", "ov84_022403F4.c"}:
+            dependency_full_filenames.append('"struct_defs/struct_0207CB08.h"')
 
         #elif c_basename == "unk_0207AE68.c":
         #    dependency_full_filenames.append('"struct_defs/struct_0207AE68_t.h"')
@@ -1573,7 +1589,10 @@ def main():
         sorted_fs_extern_overlays = sorted(fs_extern_overlays_set, key=lambda x: overlaymap.get(x, 9999))
         fs_extern_overlays_str = "".join(f"FS_EXTERN_OVERLAY({fs_extern_overlay});\n" for fs_extern_overlay in sorted_fs_extern_overlays)
 
-        new_includes = "\n".join(include_str for include_str in (enums_include_str, c_file_library_includes_str, special_nonlib_includes_str, decl_includes_str, def_includes_str, func_includes_str, fs_extern_overlays_str) if include_str != "")
+        new_includes_list = [include_str for include_str in (enums_include_str, c_file_library_includes_str, special_nonlib_includes_str, decl_includes_str, def_includes_str, func_includes_str, fs_extern_overlays_str) if include_str != ""]
+        if True:
+            all_new_c_includes.extend(new_includes_list)
+        new_includes = "\n".join(new_includes_list)
         new_c_file_content = f"{new_includes}\n{c_file_content_includeless_no_src_data_first_lines}"
         new_c_filepath = pathlib.Path(f"{OUTPUT_PREFIX}/{c_full_filename}")
         new_c_filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -1645,7 +1664,14 @@ def main():
     output_as_str = "".join(output)
     with open("find_structs_typedefs_out.txt", "w+") as f:
         f.write(output_as_str)
-        
+
+    #all_new_c_includes_split = set()
+    #for new_c_includes in all_new_c_includes:
+    #    for new_c_includes_str in new_c_includes:
+    #        all_new_c_includes_split.update(new_c_includes_str.split("\n"))
+
+    with open("all_new_c_includes_out.dump", "w+") as f:
+        f.write(str(all_new_c_includes))
 
     #typedef_struct_defs
     #typedef_struct_decls = []
