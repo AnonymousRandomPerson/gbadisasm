@@ -88,7 +88,7 @@ class Symbol:
         return f"Symbol(name={self.name}, full_addr={self.full_addr}, section={self.section}, size={self.size}, filename={self.filename}, archive={self.archive}"
 
 class XMap:
-    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs", "overlay_text_end_addrs", "symbols_by_filename")
+    __slots__ = ("filename", "start_section", "symbols_by_addr", "symbols_by_name", "overlay_start_addrs", "overlay_end_addrs", "overlay_text_end_addrs", "symbols_by_filename", "archive_filenames_by_archive", "filename_archives_by_filename")
 
     def __init__(self, filename, start_section):
         self.filename = filename
@@ -99,6 +99,8 @@ class XMap:
         self.overlay_end_addrs = {}
         self.overlay_text_end_addrs = {}
         self.symbols_by_filename = {}
+        self.archive_filenames_by_archive = {}
+        self.filename_archives_by_filename = {}
         self.read_xmap()
 
     def read_xmap(self):
@@ -142,7 +144,7 @@ class XMap:
                     size = int(split_line[1], 16)
                     section = split_line[2]
                     match_obj = filename_regex.match(split_line[4])
-                    if match_obj:
+                    if match_obj and ":" not in name and "(" not in name:
                         filename_archive = match_obj.group(1).strip().split()
                         if len(filename_archive) == 1:
                             filename = filename_archive[0]
@@ -179,9 +181,31 @@ class XMap:
                         else:
                             self.symbols_by_filename[symbol.filename].append(symbol)
 
-                        #print(f"Warning! Duplicate 
-
         self.symbols_by_addr = {k: v for k, v in sorted(self.symbols_by_addr.items(), key=lambda item: item[1].full_addr)}
+
+    def gen_archive_filename_info(self):
+        for symbols in self.symbols_by_name.values():
+            for symbol in symbols:
+                if symbol.archive is not None:
+                    object_filenames = self.archive_filenames_by_archive.get(symbol.archive)
+                    if object_filenames is None:
+                        object_filenames = set()
+                        self.archive_filenames_by_archive[symbol.archive] = object_filenames
+
+                    object_filenames.add(symbol.filename)
+
+                    archive_filenames = self.filename_archives_by_filename.get(symbol.filename)
+                    if archive_filenames is None:
+                        archive_filenames = set()
+                        self.filename_archives_by_filename[symbol.filename] = archive_filenames
+
+                    archive_filenames.add(symbol.archive)
+
+    def print_warn_info(self):
+        for object_filename, archive_filenames in self.filename_archives_by_filename.items():
+            if len(archive_filenames) > 1:
+                print(f"Filename {object_filename} appears in multiple archives {archive_filenames}!")
+
         #filenames = {}
         #for symbol in self.symbols_by_addr.values():
         #    filenames[symbol.filename] = True

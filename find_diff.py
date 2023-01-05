@@ -105,7 +105,7 @@ def main():
     ap.add_argument("chosen_symbol_index", nargs="?", type=int, default=0)
     args = ap.parse_args()
 
-    os.chdir("../master_cpuj00")
+    os.chdir("../00jupc_retsam2")
     compare_dump = pathlib.Path("diff/compare_dump.dump")
     rom_file = pathlib.Path("bin/ARM9-TS/Rom/main.srl")
     compare_dump_mtime = compare_dump.stat().st_mtime

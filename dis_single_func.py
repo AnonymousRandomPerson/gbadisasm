@@ -379,8 +379,10 @@ def main(input_full_addr, baserom_file, mainrom_file, func_name, mainrom_output_
 
 if __name__ == "__main__":
     BASEROM_FILE_DEFAULT = "../pokeplatinum/diff/pokeplatinum_us.nds"
-    MAINROM_FILE_DEFAULT = "../pokeplatinum/build/platinum.us/pokeplatinum.us.nds"
-    XMAP_FILE_DEFAULT = "../pokeplatinum/build/platinum.us/main.nef.xMAP"
+    #MAINROM_FILE_DEFAULT = "../pokeplatinum/build/platinum.us/pokeplatinum.us.nds"
+    #XMAP_FILE_DEFAULT = "../pokeplatinum/build/platinum.us/main.nef.xMAP"
+    MAINROM_FILE_DEFAULT = "../00jupc_retsam2/bin/ARM9-TS/Rom/main.srl"
+    XMAP_FILE_DEFAULT = "../00jupc_retsam2/bin/ARM9-TS/Rom/main.nef.xMAP"
 
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--input-addr", dest="input_addr", default=None)

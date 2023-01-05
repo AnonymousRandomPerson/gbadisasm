@@ -25,10 +25,10 @@ LOOKING_FOR_OVERLAY_START = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 4
-CUR_OVERLAY_START = 0x107e00
-CUR_OVERLAY_END = 0x151600
-CUR_OVERLAY_RAM = 0x21d0d80
+CUR_OVERLAY = 14
+CUR_OVERLAY_START = 0x1cce00
+CUR_OVERLAY_END = 0x1dc400
+CUR_OVERLAY_RAM = 0x221fc20
 
 def is_addr_in_ov_range(addr):
     return CUR_OVERLAY_START <= addr <= CUR_OVERLAY_END
@@ -57,7 +57,7 @@ def main():
     ap.add_argument("best_shift_index", nargs="?", type=int, default=0)
     args = ap.parse_args()
 
-    os.chdir("../00jupc_retsam")
+    os.chdir("../pokeplatinum-nm")
     subprocess.run(["./compare.sh"])
 
     longest_shift = 0
@@ -107,7 +107,7 @@ def main():
     if state == IN_MINUS_DIFF:
         shifts.append(Shift(cur_shift, cur_shift_addr))
 
-    xmap_file = XMap("bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
+    xmap_file = XMap("build/platinum.us/main.nef.xMAP", ".main")
 
     #print(shifts)
     shifts = filter(lambda x: x.count >= 10, shifts)
