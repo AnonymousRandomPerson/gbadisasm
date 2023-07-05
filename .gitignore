@@ -17,7 +17,6 @@ missing_funcs.txt
 baserom_syms.yml
 *.pyc
 __pycache__/
-*.cfg
 *.xmap
 fix_jumptable_input.txt
 fix_jumptable_out.txt
@@ -29,6 +28,7 @@ ov66.json
 *include/**/*.h
 *include/*.h
 overlaymap.json
+ndsdisasm.dSYM/Contents/Info.plist
 
 MSL C.NITRO.mcp.xml
 uncrustify_ilobby_out/*
