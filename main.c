@@ -248,7 +248,7 @@ static void read_input_file(const char *fname)
         autoload_start = READ32(gInputFileBuffer + start_ModuleParams - addr);
         autoload_end = READ32(gInputFileBuffer + start_ModuleParams + 4 - addr);
         first_autoload = READ32(gInputFileBuffer + start_ModuleParams + 8 - addr);
-        
+
         gRomStart = first_autoload - addr + offset;
         if ((autoload_end - autoload_start) / 12 <= (uint32_t)AutoloadNum)
             fatal_error("Argument to -a is out of range for ARM%d target", isArm7 ? 7 : 9);

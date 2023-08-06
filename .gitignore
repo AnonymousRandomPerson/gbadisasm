@@ -28,7 +28,7 @@ ov66.json
 *include/**/*.h
 *include/*.h
 overlaymap.json
-ndsdisasm.dSYM/Contents/Info.plist
+ndsdisasm.dSYM/*
 
 MSL C.NITRO.mcp.xml
 uncrustify_ilobby_out/*

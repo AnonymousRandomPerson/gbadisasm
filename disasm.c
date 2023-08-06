@@ -563,9 +563,9 @@ static void analyze(void)
                                 }
                             }
 
-                            // It's possible that handwritten code with different mode follows. 
+                            // It's possible that handwritten code with different mode follows.
                             // However, this only causes problem when the address following is
-                            // incorrectly labeled as BRANCH_TYPE_B. 
+                            // incorrectly labeled as BRANCH_TYPE_B.
                             label_p = lookup_label(addr);
                             if (label_p != NULL
                              && (label_p->type == LABEL_THUMB_CODE || label_p->type == LABEL_ARM_CODE)
@@ -642,9 +642,9 @@ static void analyze(void)
                         {
                             struct Label *label_p;
 
-                            // It's possible that handwritten code with different mode follows. 
+                            // It's possible that handwritten code with different mode follows.
                             // However, this only causes problem when the address following is
-                            // incorrectly labeled as BRANCH_TYPE_B. 
+                            // incorrectly labeled as BRANCH_TYPE_B.
                             label_p = lookup_label(addr);
                             if (label_p != NULL
                              && (label_p->type == LABEL_THUMB_CODE || label_p->type == LABEL_ARM_CODE)
