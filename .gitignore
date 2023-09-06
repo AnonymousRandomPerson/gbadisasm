@@ -32,3 +32,6 @@ overlaymap.json
 
 MSL C.NITRO.mcp.xml
 uncrustify_ilobby_out/*
+
+!1tbs2.cfg
+!1tbs_cpp.cfg
