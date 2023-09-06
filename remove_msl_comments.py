@@ -1,5 +1,5 @@
 # =============================================================================
-# Copyright (c) 2022 luckytyphlosion
+# Copyright (c) 2023 luckytyphlosion
 # 
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted.
@@ -12,42 +12,45 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 # =============================================================================
-
-import subprocess
-import itertools
-import glob
 import re
-import os
-import shutil
+import subprocess
+import glob
 
 triple_plus_newline_regex = re.compile(r"\n\n\n+")
-extern_c_regex = re.compile(r"^extern\s+\"C\"", flags=re.MULTILINE)
-if_elif_define_include_regex = re.compile(r"^(#\s*(?:if|elif|define|include|ifdef|ifndef|undef))\s+", flags=re.MULTILINE)
+start_of_text_newlines_regex = re.compile(r"^\n+")
+
+def comment_remover(text):
+    def replacer(match):
+        s = match.group(0)
+        if s.startswith('/'):
+            return " " # note: a space and not an empty string
+        else:
+            return s
+    pattern = re.compile(
+        r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
+        re.DOTALL | re.MULTILINE
+    )
+    return re.sub(pattern, replacer, text)
 
 def main():
-    MODE = 2
-    if MODE == 0:
-        uncrustify_src_files = glob.glob("../pokeplatinum/lib/NitroSDK/src/**/*.[ch]", recursive=True)
-    elif MODE == 1:
-        uncrustify_src_files = ["../pokeplatinum/lib/NitroSystem/src/fnd/include/heapcommoni.h", "../pokeplatinum/lib/NitroSystem/src/gfd/include/gfdi_LinkedListVramMan_Common.h"]
-    elif MODE == 2:
-        uncrustify_src_files = glob.glob("../pokeplatinum/lib/NitroSystem/src/**/*.h", recursive=True)
-    else:
-        print("No mode selected!")
-        return
+    with open("msl_source_files.dump", "r") as f:
+        source_files = [f"../00jupc_retsam/sdk/cw/ARM_EABI_Support/{filename}" for filename in f.read().strip().splitlines()]
 
-    for filename in uncrustify_src_files:
-        output_filename = filename#filename.replace("00jupc_retsam", "00jupc_retsam2")
+    for filename in source_files + glob.glob("../00jupc_retsam/sdk/cw/ARM_EABI_Support/**/*.h", recursive=True):
+        if "MSL_C++" in filename or filename.endswith(".cpp"):
+            continue
+        output_filename = filename.replace("00jupc_retsam", "00jupc_retsam")
+
         command = ("uncrustify", "-c", "1tbs2.cfg", "-f", filename, "-o", output_filename, "--no-backup", "-l", "C")
         #print(command)
         subprocess.run(command, check=True)
 
-        with open(output_filename, "r") as f:
+        with open(output_filename, "r", encoding="iso-8859-1") as f:
             contents = f.read()
 
-        output = triple_plus_newline_regex.sub("\n\n", contents).strip() + "\n"
-        output = extern_c_regex.sub("extern \"C\"", output)
-        output = if_elif_define_include_regex.sub(r"\g<1> ", output)
+        output = comment_remover(contents)
+        output = start_of_text_newlines_regex.sub("", output)
+        output = triple_plus_newline_regex.sub("\n\n", output).strip() + "\n"
 
         with open(output_filename, "w+") as f:
             f.write(output)

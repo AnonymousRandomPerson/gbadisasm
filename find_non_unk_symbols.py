@@ -62,6 +62,10 @@ def is_wanted_non_unk_symbol(symbol, symbol_name):
             return False
     elif symbol.filename == "cpp_todo":
         return False
+    elif symbol_name.startswith("_"):
+        return False
+    elif symbol.full_addr.overlay == 66:
+        return False
     #elif symbol.section in (".rodata", ".bss", ".data"):
     #    return False
     else:
@@ -102,28 +106,40 @@ def main():
     with open("find_non_unk_symbols_out.dump", "w+") as f:
         f.write(output)
 
-    #os.chdir("../pokeplatinum")
-    #
-    #for symbol_name, symbols in non_unk_symbols.items():
-    #    for i, symbol in enumerate(symbols):
-    #        if symbol.full_addr.overlay != -1:
-    #            continue
-    #        if symbol.section not in (".text", ".itcm", ".dtcm", ".dtcm.bss"):
-    #            raise RuntimeError(f"Found non-text symbol! symbol.name: {symbol.name}, symbol.section: {symbol.section}")
-    #
-    #        symbol_name_as_unk = f"sub_{symbol.full_addr.addr:08X}"
-    #        if len(symbols) == 1:
-    #            new_symbol_name = symbol.name
-    #        else:
-    #            new_symbol_name = f"{symbol.name}_dup{i + 1}"
-    #            #if symbol.name[-1].isdigit():
-    #            #    
-    #            #else:
-    #            #    new_symbol_name = f"{symbol.name}_dup{i + 1}"
-    #
-    #        replace_cmd = ["./replace.sh", symbol_name_as_unk, new_symbol_name]
-    #        print(replace_cmd)
-    #        subprocess.run(replace_cmd)
+    os.chdir("../pokeplatinum")
+
+    #ignore_symbol_names = {"stEvalRate", "WAYPORT_SSID", "FREESPOT_SSID", "NINTENDOWFC_SSID", "DWC_AC_SEARCH_CHANNEL"}
+
+    for symbol_name, symbols in non_unk_symbols.items():
+        if not symbol_name.startswith("DWC_"):
+            continue
+
+        for i, symbol in enumerate(symbols):
+            if symbol.archive is None or not symbol.archive.startswith("libdwc"):
+                continue
+            #if symbol.full_addr.overlay != -1:
+            #    continue
+            if symbol.section not in (".text", ".itcm", ".dtcm", ".dtcm.bss"):
+                print(f"Found non-text symbol! symbol.name: {symbol.name}, symbol.section: {symbol.section}")
+                continue
+
+            if symbol.full_addr.overlay == -1:
+                symbol_name_as_unk = f"sub_{symbol.full_addr.addr:08X}"
+            else:
+                symbol_name_as_unk = f"ov{symbol.full_addr.overlay}_{symbol.full_addr.addr:08X}"
+
+            if len(symbols) == 1:
+                new_symbol_name = symbol.name
+            else:
+                new_symbol_name = f"{symbol.name}_dup{i + 1}"
+                #if symbol.name[-1].isdigit():
+                #    
+                #else:
+                #    new_symbol_name = f"{symbol.name}_dup{i + 1}"
+
+            replace_cmd = ["./replace.sh", symbol_name_as_unk, new_symbol_name]
+            print(replace_cmd)
+            subprocess.run(replace_cmd)
 
 if __name__ == "__main__":
     main()

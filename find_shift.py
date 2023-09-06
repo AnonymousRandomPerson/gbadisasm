@@ -25,10 +25,10 @@ LOOKING_FOR_OVERLAY_START = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 14
-CUR_OVERLAY_START = 0x1cce00
-CUR_OVERLAY_END = 0x1dc400
-CUR_OVERLAY_RAM = 0x221fc20
+CUR_OVERLAY = -1
+CUR_OVERLAY_START = 0x4000
+CUR_OVERLAY_END = 0x105d14
+CUR_OVERLAY_RAM = 0x2000000
 
 def is_addr_in_ov_range(addr):
     return CUR_OVERLAY_START <= addr <= CUR_OVERLAY_END
@@ -107,7 +107,7 @@ def main():
     if state == IN_MINUS_DIFF:
         shifts.append(Shift(cur_shift, cur_shift_addr))
 
-    xmap_file = XMap("build/platinum.us/main.nef.xMAP", ".main")
+    xmap_file = XMap("build/main.nef.xMAP", ".main")
 
     #print(shifts)
     shifts = filter(lambda x: x.count >= 10, shifts)

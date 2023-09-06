@@ -167,6 +167,19 @@ def generic_replace(input_regex, replacement_template):
             print(f"Processed {filename.replace('../00jupc_retsam/', '')}: {num_replacements} replacements")
             #break
 
+def generic_replace_pokeplatinum_asm(input_regex, replacement_template):
+    for filename in glob.glob("../pokeplatinum/asm/**/*.s", recursive=True) + glob.glob("../pokeplatinum/lib/**/*.s", recursive=True):
+        with open(filename, "r") as f:
+            contents = f.read()
+
+        output, num_replacements = input_regex.subn(replacement_template, contents)
+        if num_replacements > 0:
+            with open(filename.replace("pokeplatinum", "pokeplatinum"), "w+") as f:
+                f.write(output)
+
+            print(f"Processed {filename.replace('../pokeplatinum/', '')}: {num_replacements} replacements")
+            #break
+
 dummy_macros_str = """
 DWC_SetReportLevel
 SDK_ASSERT
@@ -206,8 +219,23 @@ def remove_dummied_macros():
             print(f"Processed {filename.replace('../pokeplatinum/', '')}: {num_replacements} replacements")
             #break
 
+def fix_asm_comments():
+    with open("asm_comment_files.dump", "r") as f:
+        asm_comment_files = f.read().split(" ")
+
+    os.chdir("../pokeplatinum")
+
+    for asm_comment_file in asm_comment_files:
+        with open(asm_comment_file, "r") as f:
+            contents = f.read()
+
+        output = contents.replace(";", "//")
+
+        with open(asm_comment_file, "w+") as f:
+            f.write(output)
+
 def main():
-    MODE = 6
+    MODE = 7
 
     if MODE == 0:
         remove_num_parens()
@@ -223,6 +251,13 @@ def main():
         generic_replace(re.compile(r"\bCTRDG_IsPulledOut\(\) == 1\b"), r"CTRDG_IsPulledOut() == TRUE")
     elif MODE == 6:
         remove_dummied_macros()
+    elif MODE == 7:
+        fix_asm_comments()
+    elif MODE == 8:
+        generic_replace_pokeplatinum_asm(
+            re.compile(r"^\t(ldr|str)\s+(r[0-7]|sb|sl|fp|ip|sp|lr),\s*\[\s*(r[0-7]|sb|sl|fp|ip|sp|lr),\s*#0\s*\]\s*,\s*#", flags=re.MULTILINE),
+            r"\t\g<1> \g<2>, [\g<3>], #"
+        )
     else:
         print("No mode selected!")
 

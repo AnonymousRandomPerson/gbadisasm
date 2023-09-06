@@ -25,10 +25,10 @@ SKIPPING_UNTIL_0x4800 = 0
 LOOKING_FOR_MINUS = 1
 IN_MINUS_DIFF = 2
 
-CUR_OVERLAY = 117
-CUR_OVERLAY_START = 0x3ffe00
-CUR_OVERLAY_END = 0x406a00
-CUR_OVERLAY_RAM = 0x2260440
+CUR_OVERLAY = -1
+CUR_OVERLAY_START = 0x4000
+CUR_OVERLAY_END = 0x105d14
+CUR_OVERLAY_RAM = -1
 
 class Range:
     __slots__ = ("start", "end", "overlay")
@@ -43,6 +43,7 @@ load_to_virt_conversion_table = (
     Range(5, 0x151600, 0x182a00),
     Range(7, 0x18e200, 0x194000),
     Range(13, 0x1c2c00, 0x1cce00),
+    Range(16, 0x1dc600, 0x212200),
     Range(17, 0x212200, 0x22c000),
     Range(19, 0x257c00, 0x267600),
     Range(20, 0x267600, 0x26be00),
@@ -105,14 +106,17 @@ def main():
     ap.add_argument("chosen_symbol_index", nargs="?", type=int, default=0)
     args = ap.parse_args()
 
-    os.chdir("../00jupc_retsam2")
+    os.chdir("../pokeplatinum-nm")
     compare_dump = pathlib.Path("diff/compare_dump.dump")
-    rom_file = pathlib.Path("bin/ARM9-TS/Rom/main.srl")
-    compare_dump_mtime = compare_dump.stat().st_mtime
-    rom_file_mtime = rom_file.stat().st_mtime
-
-    if rom_file_mtime >= compare_dump_mtime:
+    rom_file = pathlib.Path("build/pokeplatinum.us.nds")
+    if not compare_dump.is_file():
         subprocess.run(["./compare.sh"])
+    else:
+        compare_dump_mtime = compare_dump.stat().st_mtime
+        rom_file_mtime = rom_file.stat().st_mtime
+
+        if rom_file_mtime >= compare_dump_mtime:
+            subprocess.run(["./compare.sh"])
 
     longest_shift = 0
     #cur_shift = 0
@@ -145,7 +149,7 @@ def main():
                 if line[0] != "-":
                     state = LOOKING_FOR_MINUS
 
-    xmap_file = XMap("bin/ARM9-TS/Rom/main.nef.xMAP", ".main")
+    xmap_file = XMap("build/main.nef.xMAP", ".main")
     chosen_diff = diffs[args.diff_index]
     if 0x106600 <= chosen_diff < 0x107600:
         print(f"diff at {chosen_diff:07x} is in arm9ovltable!")
